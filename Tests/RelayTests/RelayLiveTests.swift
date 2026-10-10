@@ -81,7 +81,7 @@ final class RelayLiveTests: XCTestCase {
         XCTAssertTrue(pad.collaboration.isLive(next))
         XCTAssertEqual(try pad.data(next, RelayTextDocument.filename), archive)
         XCTAssertNil(pad.errorMessage)
-        XCTAssertTrue(pad.collaboration.status(next)?.contains("等待重连") == true)
+        XCTAssertEqual(pad.collaboration.status(next), L10n.localized("已保存，等待重连", "Saved. Waiting to Reconnect"))
     }
     func testTextDraftPersistsOfflineAndLegacyPeerDoesNotReceiveLayers() async throws {
         try await startAndCommit()

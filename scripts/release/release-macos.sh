@@ -4,9 +4,16 @@ cd "$(dirname "$0")/../.."
 : "${VERSION:?Set VERSION to a v-prefixed semantic version}"
 : "${DEVELOPER_ID_IDENTITY:?Missing Developer ID identity}"
 : "${APPLE_TEAM_ID:?Missing Apple team ID}"
-: "${APP_STORE_CONNECT_KEY_ID:?Missing notarization key ID}"
-: "${APP_STORE_CONNECT_ISSUER_ID:?Missing notarization issuer}"
-: "${APP_STORE_CONNECT_PRIVATE_KEY:?Missing notarization private key}"
+if [[ -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+  notary_mode=apple-id
+  : "${PICELF_SIGNING_DIR:?Import the release certificate before notarization}"
+  [[ -f "$PICELF_SIGNING_DIR/release.keychain-db" ]] || { echo 'Missing temporary release keychain' >&2; exit 1; }
+elif [[ -n "${APP_STORE_CONNECT_KEY_ID:-}" && -n "${APP_STORE_CONNECT_ISSUER_ID:-}" && -n "${APP_STORE_CONNECT_PRIVATE_KEY:-}" ]]; then
+  notary_mode=api-key
+else
+  echo 'Configure APPLE_ID and APPLE_APP_SPECIFIC_PASSWORD, or all three App Store Connect API key secrets' >&2
+  exit 1
+fi
 : "${GITHUB_REPOSITORY:?Missing repository}"
 : "${GH_TOKEN:?Missing release token}"
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected vMAJOR.MINOR.PATCH' >&2; exit 1; }
@@ -41,10 +48,19 @@ signing_details="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
 [[ "$signing_details" == *'Authority=Developer ID Application:'* && "$signing_details" == *"TeamIdentifier=$APPLE_TEAM_ID"* && "$signing_details" == *'(runtime)'* ]] || { echo 'Invalid release signing identity/runtime' >&2; exit 1; }
 key_dir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/picelf-notary.XXXXXX")"
 trap 'rm -rf "$key_dir"' EXIT
-key_file="$key_dir/AuthKey.p8"
-printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$key_file"
-chmod 600 "$key_file"
-notary_args=(--key "$key_file" --key-id "$APP_STORE_CONNECT_KEY_ID" --issuer "$APP_STORE_CONNECT_ISSUER_ID" --wait)
+if [[ "$notary_mode" == apple-id ]]; then
+  # Store once in the temporary signing keychain; cleanup-signing.sh removes it.
+  xcrun notarytool store-credentials picelf-release \
+    --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+    --keychain "$PICELF_SIGNING_DIR/release.keychain-db" >/dev/null
+  notary_args=(--keychain-profile picelf-release --keychain "$PICELF_SIGNING_DIR/release.keychain-db" --wait)
+else
+  key_file="$key_dir/AuthKey.p8"
+  printf '%s' "$APP_STORE_CONNECT_PRIVATE_KEY" > "$key_file"
+  chmod 600 "$key_file"
+  notary_args=(--key "$key_file" --key-id "$APP_STORE_CONNECT_KEY_ID" --issuer "$APP_STORE_CONNECT_ISSUER_ID" --wait)
+fi
 mkdir -p dist
 zip_path="$key_dir/PicelfOpen.zip"
 ditto -c -k --keepParent "$app_path" "$zip_path"

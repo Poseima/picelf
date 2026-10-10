@@ -12,9 +12,17 @@ Configure the GitHub Actions environment named `release` with these secrets:
 - `DEVELOPER_ID_P12_PASSWORD`: export password.
 - `DEVELOPER_ID_IDENTITY`: exact signing identity, beginning with `Developer ID Application:`.
 - `APPLE_TEAM_ID`: Apple development team identifier.
-- `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`: a team App Store Connect API key supporting notarization; the private key is the `.p8` contents.
 
-Do not commit credentials. The workflow imports the certificate into a temporary keychain, stores the API key only in runner temporary storage, and removes both at the end. Fork PRs receive no publishing secrets. No unsigned fallback is published when credentials or notarization are missing.
+For notarization, configure **one** of these authentication methods:
+
+- `APPLE_ID` and `APPLE_APP_SPECIFIC_PASSWORD`: your developer Apple Account and an app-specific password generated at [account.apple.com](https://account.apple.com/) under Sign-In and Security → App-Specific Passwords. Use a dedicated label such as `Picelf GitHub Release`. Never use your primary Apple Account password. This method does not require generating an App Store Connect API key.
+- Alternatively, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`: a team App Store Connect API key supporting notarization; the private key is the `.p8` contents.
+
+If both methods are configured, the Apple Account method takes precedence. Apple may still require account verification before allowing notarization; validate the credentials before releasing. See [Apple's notarization authentication documentation](https://developer.apple.com/documentation/technotes/tn3147-migrating-to-the-latest-notarization-tool).
+
+Do not commit credentials. The workflow imports the certificate into a temporary keychain, stores notarization credentials in that keychain or in runner temporary storage, and removes them at the end. Fork PRs receive no publishing secrets. Changing the primary Apple Account password revokes its app-specific passwords; update the release secret if this happens. No unsigned fallback is published when credentials or notarization are missing.
+
+With Apple Account authentication configured, manually run **Check release credentials** from the Actions tab on `main`. It imports the certificate, checks the signing identity and validates access to notarization history without displaying history, submitting software or creating a release. A successful check verifies authentication; the candidate installer must still pass notarization and installation acceptance.
 
 ## Release procedure
 
