@@ -44,3 +44,6 @@ __pycache__/
 Tests/PicelfCoreTests/Fixtures/scroll-test.pdf
 Tests/PicelfCoreTests/Fixtures/external.frames/
 Tests/PicelfIOSTests/Fixtures/
+
+# Local marketing sources; curated public visuals live in docs/assets/
+/Picelf vibe marketing/
