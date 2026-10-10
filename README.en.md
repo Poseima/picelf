@@ -10,7 +10,9 @@
 
 </div>
 
-![Picelf: the brand logo with white paper and an emerald watercolor collage](docs/assets/hero-art.png)
+<p align="center">
+  <img src="docs/assets/hero-art.png" width="720" alt="Picelf: the brand logo with white paper and an emerald watercolor collage">
+</p>
 
 <div align="center">
 
@@ -55,7 +57,7 @@ Choose a window or region, scroll through its content, preview the capture and s
 <br>
 
 <p align="center">
-  <img src="docs/assets/scrolling.png" width="740" alt="Scrolling capture showcase: target window, live preview and stitched result">
+  <img src="docs/assets/scrolling.png" width="720" alt="Scrolling capture showcase: target window, live preview and stitched result">
 </p>
 
 <br>
@@ -73,7 +75,7 @@ Point out details with arrows and text, hide parts you do not want to share with
 <br>
 
 <p align="center">
-  <img src="docs/assets/editor.png" width="740" alt="Editor showcase: annotation tools, mosaic, inspector and custom watermarks">
+  <img src="docs/assets/editor.png" width="720" alt="Editor showcase: annotation tools, mosaic, inspector and custom watermarks">
 </p>
 
 <br>
@@ -88,7 +90,9 @@ Point out details with arrows and text, hide parts you do not want to share with
 
 Extract image text with Apple Vision and copy it for further editing. On macOS 15+, translate with Apple Translation, view translations on hover or overlay them, and export a translated copy.
 
-![OCR and translation workflow illustration: image text, recognized text and a Chinese translation](docs/assets/ocr.en.svg)
+<p align="center">
+  <img src="docs/assets/ocr.en.svg" width="720" alt="OCR and translation workflow illustration: image text, recognized text and a Chinese translation">
+</p>
 
 *This workflow illustration uses generic sample text. Translation may require an initial download of Apple's language packs.*
 
@@ -105,7 +109,7 @@ Pin captures beside your design, code or notes. Bind a pin to a window or displa
 <br>
 
 <p align="center">
-  <img src="docs/assets/desktop-pins.png" width="740" alt="Desktop pin showcase: multiple references and window and display binding options">
+  <img src="docs/assets/desktop-pins.png" width="720" alt="Desktop pin showcase: multiple references and window and display binding options">
 </p>
 
 <br>

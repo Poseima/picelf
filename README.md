@@ -10,7 +10,9 @@
 
 </div>
 
-![Picelf：品牌 logo、明亮纸纹与翡翠绿水彩拼贴](docs/assets/hero-art.png)
+<p align="center">
+  <img src="docs/assets/hero-art.png" width="720" alt="Picelf：品牌 logo、明亮纸纹与翡翠绿水彩拼贴">
+</p>
 
 <div align="center">
 
@@ -55,7 +57,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/assets/scrolling.png" width="740" alt="滚动截图展示：捕获窗口、实时长图预览与拼接结果">
+  <img src="docs/assets/scrolling.png" width="720" alt="滚动截图展示：捕获窗口、实时长图预览与拼接结果">
 </p>
 
 <br>
@@ -73,7 +75,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/assets/editor.png" width="740" alt="图片编辑展示：标注工具、马赛克、检查器与自定义水印">
+  <img src="docs/assets/editor.png" width="720" alt="图片编辑展示：标注工具、马赛克、检查器与自定义水印">
 </p>
 
 <br>
@@ -88,7 +90,9 @@
 
 通过 Apple Vision 提取图片文字，复制后继续整理；在 macOS 15+ 使用 Apple Translation 翻译，选择悬停查看或译文覆盖，并导出翻译副本。
 
-![OCR 与翻译功能示意：图片文字、识别结果和中文译文](docs/assets/ocr.zh-CN.svg)
+<p align="center">
+  <img src="docs/assets/ocr.zh-CN.svg" width="720" alt="OCR 与翻译功能示意：图片文字、识别结果和中文译文">
+</p>
 
 *上图为使用通用示例文本制作的功能示意。翻译首次使用可能需要下载系统语言包。*
 
@@ -105,7 +109,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/assets/desktop-pins.png" width="740" alt="桌面贴图展示：多张参考图与窗口、屏幕绑定菜单">
+  <img src="docs/assets/desktop-pins.png" width="720" alt="桌面贴图展示：多张参考图与窗口、屏幕绑定菜单">
 </p>
 
 <br>
