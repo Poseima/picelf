@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Picelf</string>
+    <key>CFBundleDisplayName</key>
+    <string>Picelf</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+    <key>LSUIElement</key>
+    <false/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.photography</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Picelf needs Screen Recording permission to capture window content and stitch long screenshots when you start capture.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Picelf needs Microphone permission only when you enable microphone audio during screen recording.</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Picelf 通过本地网络连接你的 Mac 和 iPad，用于实时预览和回传标注图片。</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_picelf-relay._tcp</string>
+    </array>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key>
+            <dict>
+                <key>default</key>
+                <string>用 Picelf 在 iPad 标注</string>
+            </dict>
+            <key>NSMessage</key>
+            <string>annotateOnIPad</string>
+            <key>NSPortName</key>
+            <string>Picelf</string>
+            <key>NSSendTypes</key>
+            <array>
+                <string>public.file-url</string>
+            </array>
+            <key>NSRequiredContext</key>
+            <dict/>
+        </dict>
+    </array>
+</dict>
+</plist>

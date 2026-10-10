@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Picelf</string>
+    <key>CFBundleDisplayName</key>
+    <string>Picelf</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Picelf needs access to your photo library to import images for stitching.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Picelf needs permission to save stitched screenshots to your photo library.</string>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Picelf 通过本地网络连接你的 Mac 和 iPad，用于实时预览和回传标注图片。</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_picelf-relay._tcp</string>
+    </array>
+</dict>
+</plist>

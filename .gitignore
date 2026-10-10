@@ -1,0 +1,46 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+*.hmap
+*.ipa
+
+# Swift
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+*.dSYM.zip
+*.dSYM
+
+# Temporary
+tmp/
+
+# E2E cached frames and output images (large PNGs, machine-specific)
+Tests/PicelfCoreTests/Fixtures/e2e-frames*/
+Tests/PicelfCoreTests/Fixtures/e2e-output/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Local signing, packaging and validation artifacts
+config/local.xcconfig
+dist/
+.test-results/
+*.xcresult/
+*.p12
+*.p8
+.env
+.env.*
+__pycache__/
+Tests/PicelfCoreTests/Fixtures/scroll-test.pdf
+Tests/PicelfCoreTests/Fixtures/external.frames/
+Tests/PicelfIOSTests/Fixtures/

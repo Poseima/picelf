@@ -1,0 +1,30 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [mac-build, mac-test, ios-build, ios-test]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 16.4
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - uses: actions/cache@v4
+        with:
+          path: .build/packages
+          key: spm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('project.yml') }}
+      - name: Validate
+        run: ./scripts/ci/check.sh '${{ matrix.mode }}'

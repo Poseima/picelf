@@ -1,0 +1,21 @@
+name: Bug report / 问题反馈
+description: Report a reproducible problem / 提交可复现问题
+body:
+  - type: input
+    id: version
+    attributes:
+      label: App version and OS / 应用及系统版本
+      placeholder: Picelf 1.0.0, macOS 15.0, Apple Silicon
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps and expected/actual result / 步骤与预期、实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Optional screenshots or logs / 可选截图或日志
+      description: Remove personal information before attaching files. 上传前请移除个人信息。
