@@ -16,7 +16,7 @@
 
 <div align="center">
 
-免费的开源截图、长图拼接与编辑工具，支持 Mac 和 iPhone/iPad。<br>无需账号，全部功能没有使用期限。
+免费的开源截图、长图拼接与编辑工具，支持 Mac 和 iPad。<br>无需账号，全部功能没有使用期限。
 
 **[下载 Mac 版](https://github.com/Poseima/picelf-open/releases/latest)** &nbsp; · &nbsp; [安装说明](docs/installation.md) &nbsp; · &nbsp; [从源码构建](#build) &nbsp; · &nbsp; [反馈建议](https://github.com/Poseima/picelf-open/issues)
 
@@ -39,7 +39,7 @@
 | **桌面贴图与画布** | 将图片置顶作参考，绑定窗口或屏幕，用画布组织多张图片 | [贴图展示](#pins) |
 | **工作台** | 后台拼接任务、截图与录屏历史，集中管理捕获结果 | [更多工作流](#workflows) |
 | **屏幕录制** | 窗口/区域录制、暂停与继续，可选麦克风音频 | [更多工作流](#workflows) |
-| **iPhone / iPad** | 图片与视频导入、广播录屏提帧、拼接、编辑与导出 | [平台支持](#platforms) |
+| **iPad** | 图片与视频导入、广播录屏提帧、拼接、编辑与导出 | [平台支持](#platforms) |
 | **Mac / iPad 接力** | 本地配对、实时标注、可编辑文字与图片回传 | [更多工作流](#workflows) |
 
 </details>
@@ -128,7 +128,7 @@
 | :--- | :--- |
 | **捕获 → 工作台 → 编辑** | 让长图在后台拼接，在工作台查看任务与历史，再打开结果继续编辑。 |
 | **屏幕 → 视频** | 录制窗口或区域，按需启用麦克风，暂停后继续，再导出录制结果。 |
-| **iPhone / iPad → 长图** | 导入图片或视频，也可以通过广播录屏采集帧，拼接并导出结果。 |
+| **iPad → 长图** | 导入图片或视频，也可以通过广播录屏采集帧，拼接并导出结果。 |
 | **Mac ↔ iPad** | 在本地网络配对后，实时接力标注、编辑文字，并将图片回传到 Mac。 |
 
 <a id="platforms"></a>
@@ -138,7 +138,7 @@
 | 平台 | 系统要求 | 获取方式 |
 | :--- | :--- | :--- |
 | **Mac · Apple Silicon / Intel** | macOS 14+；图片翻译需要 macOS 15+ | [Mac Releases](https://github.com/Poseima/picelf-open/releases) 或从源码构建 |
-| **iPhone / iPad** | iOS / iPadOS 16+ | 当前提供完整源码，按 [iOS 构建指南](docs/ios-build.md) 自行安装 |
+| **iPad** | iPadOS 16+ | 当前提供完整源码，按 [iPad 构建指南](docs/ios-build.md) 自行安装 |
 | **Mac / iPad 接力** | 两端运行 Picelf，并可通过本地网络连接 | 在应用内配对并确认连接 |
 
 ## 下载与安装
@@ -165,7 +165,7 @@ open Picelf.xcodeproj
 
 选择 `Picelf` scheme，在 Signing & Capabilities 设置自己的开发团队，再按 Cmd+R。使用签名构建测试系统权限；纯编译检查运行 `./scripts/ci/check.sh mac-build`。
 
-iPhone/iPad 真机、广播扩展与 App Group 配置见 [iOS 构建指南](docs/ios-build.md)。
+iPad 真机、广播扩展与 App Group 配置见 [iPad 构建指南](docs/ios-build.md)。
 
 ## 本地优先，开放使用
 

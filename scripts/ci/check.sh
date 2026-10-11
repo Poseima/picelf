@@ -16,7 +16,7 @@ case "$mode" in
   ios-test)
     destination="${IOS_TEST_DESTINATION:-}"
     if [[ -z "$destination" ]]; then
-      device_id="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))')"
+      device_id="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPad")))')"
       destination="platform=iOS Simulator,id=$device_id"
     fi
     xcodebuild test "${common[@]}" -scheme PicelfIOS -destination "$destination" -derivedDataPath .build/ios -only-testing:PicelfIOSTests -parallel-testing-enabled NO ;;

@@ -120,7 +120,7 @@ targets:
         MARKETING_VERSION: 1.0.3
         CURRENT_PROJECT_VERSION: 4
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       configs:
         Debug:
@@ -145,7 +145,7 @@ targets:
         MARKETING_VERSION: 1.0.3
         CURRENT_PROJECT_VERSION: 4
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
-        TARGETED_DEVICE_FAMILY: "1,2"
+        TARGETED_DEVICE_FAMILY: "2"
       configs:
         Debug:
           CODE_SIGN_STYLE: Automatic
@@ -189,6 +189,7 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Picelf.app/Picelf"
         BUNDLE_LOADER: "$(TEST_HOST)"
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        TARGETED_DEVICE_FAMILY: "2"
       configs:
         Debug:
           CODE_SIGN_STYLE: Automatic
@@ -208,6 +209,7 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         TEST_TARGET_NAME: PicelfIOS
         IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+        TARGETED_DEVICE_FAMILY: "2"
       configs:
         Debug:
           CODE_SIGN_STYLE: Automatic

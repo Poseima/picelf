@@ -16,7 +16,7 @@
 
 <div align="center">
 
-A free, open-source capture and editing tool for Mac and iPhone/iPad.<br>No account. All features free, with no time limit.
+A free, open-source capture and editing tool for Mac and iPad.<br>No account. All features free, with no time limit.
 
 **[Download for Mac](https://github.com/Poseima/picelf-open/releases/latest)** &nbsp; · &nbsp; [Installation](docs/installation.md) &nbsp; · &nbsp; [Build from source](#build) &nbsp; · &nbsp; [Feedback](https://github.com/Poseima/picelf-open/issues)
 
@@ -39,7 +39,7 @@ Save a long page as one image, explain a screenshot with arrows and notes, pin r
 | **Desktop pins & canvas** | Keep references on top, bind them to a window or display, and arrange multiple images on a canvas | [Desktop pins](#pins) |
 | **Workbench** | Background stitching jobs and a shared home for capture and recording history | [More workflows](#workflows) |
 | **Screen recording** | Record a window or region, pause and resume, with optional microphone audio | [More workflows](#workflows) |
-| **iPhone / iPad** | Import images and videos, collect broadcast frames, stitch, edit and export | [Platform support](#platforms) |
+| **iPad** | Import images and videos, collect broadcast frames, stitch, edit and export | [Platform support](#platforms) |
 | **Mac / iPad relay** | Pair locally, annotate live, edit text and return images | [More workflows](#workflows) |
 
 </details>
@@ -128,7 +128,7 @@ Pin captures beside your design, code or notes. Bind a pin to a window or displa
 | :--- | :--- |
 | **Capture → Workbench → Edit** | Stitch long images in the background, review jobs and history, then open the result to keep editing. |
 | **Screen → Video** | Record a window or region, enable the microphone if needed, pause and resume, then export the recording. |
-| **iPhone / iPad → Long image** | Import images or videos, or collect frames through broadcast capture, then stitch and export. |
+| **iPad → Long image** | Import images or videos, or collect frames through broadcast capture, then stitch and export. |
 | **Mac ↔ iPad** | Pair over the local network, annotate live, edit text and return images to your Mac. |
 
 <a id="platforms"></a>
@@ -138,7 +138,7 @@ Pin captures beside your design, code or notes. Bind a pin to a window or displa
 | Platform | Requirements | Availability |
 | :--- | :--- | :--- |
 | **Mac · Apple Silicon / Intel** | macOS 14+; image translation requires macOS 15+ | [Mac Releases](https://github.com/Poseima/picelf-open/releases) or build from source |
-| **iPhone / iPad** | iOS / iPadOS 16+ | Complete source available; follow the [iOS build guide](docs/ios-build.md) to install |
+| **iPad** | iPadOS 16+ | Complete source available; follow the [iPad build guide](docs/ios-build.md) to install |
 | **Mac / iPad relay** | Picelf running on both devices, connected over the local network | Pair and confirm the connection in the app |
 
 ## Download and install
@@ -165,7 +165,7 @@ open Picelf.xcodeproj
 
 Select the `Picelf` scheme, choose your development team in Signing & Capabilities, and run with Cmd+R. Use signed builds for privacy-permission testing; run `./scripts/ci/check.sh mac-build` for compilation only.
 
-See the [iOS build guide](docs/ios-build.md) for device, broadcast extension and App Group setup.
+See the [iPad build guide](docs/ios-build.md) for device, broadcast extension and App Group setup.
 
 ## Local first. Open to everyone.
 

@@ -1,12 +1,12 @@
-# iPhone / iPad build guide
+# iPad build guide / iPad 构建指南
 
-iOS/iPadOS 16+ source is included. There is currently no hosted iOS installer, App Store or TestFlight channel.
+The mobile app currently supports iPadOS 16+ and is built for iPad only. Source is included; there is currently no hosted iPad installer, App Store or TestFlight channel.
 
-iPhone/iPad 目前提供完整源码，需要使用 Xcode 自行构建。先安装 Xcode 16+ 和 XcodeGen，再运行 `xcodegen generate`，打开 `Picelf.xcodeproj` 并选择 `PicelfIOS` scheme。
+移动端当前仅支持 iPad（iPadOS 16+），提供完整源码，需要使用 Xcode 自行构建。先安装 Xcode 16+ 和 XcodeGen，再运行 `xcodegen generate`，打开 `Picelf.xcodeproj` 并选择 `PicelfIOS` scheme。
 
 ## Simulator
 
-Run `./scripts/ci/check.sh ios-build` for compilation. In Xcode choose an iPhone or iPad simulator and run. Test image/video import and relay UI there; Control Center broadcast recording and final local-network validation require physical devices.
+Run `./scripts/ci/check.sh ios-build` for compilation and `./scripts/ci/check.sh ios-test` for deterministic tests on an available iPad simulator. In Xcode choose an iPad simulator and run. Test image/video import and relay UI there; Control Center broadcast recording and final local-network validation require physical devices.
 
 ## Physical device / 真机
 

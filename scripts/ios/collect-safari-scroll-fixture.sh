@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 PROJECT_PATH="$ROOT_DIR/Picelf.xcodeproj"
 SCHEME="PicelfIOS"
-SIMULATOR_NAME="iPhone 15 Pro"
+SIMULATOR_NAME=""
 SIMULATOR_UDID=""
 CASE_ID=""
 URL=""
@@ -29,7 +29,7 @@ Options:
   --settle-ms <ms>               Delay between swipes in milliseconds (default: $SETTLE_MS)
   --initial-settle-ms <ms>       Delay after opening Safari in milliseconds (default: $INITIAL_SETTLE_MS)
   --pre-record-settle-ms <ms>    Delay after opening the URL before video recording begins (default: $PRE_RECORD_SETTLE_MS)
-  --simulator <name>             Simulator device name (default: $SIMULATOR_NAME)
+  --simulator <name>             iPad simulator name (default: first available iPad)
   --udid <device-udid>           Explicit simulator UDID
   --destination-dir <path>       Directory for the captured mp4 (default: $DESTINATION_DIR)
   --derived-data-path <path>     DerivedData path for xcodebuild (default: $DERIVED_DATA_PATH)
@@ -38,12 +38,14 @@ EOF
 
 resolve_udid() {
   local device_name="$1"
-  local line
-  line="$(xcrun simctl list devices available | grep -F "$device_name (" | head -n 1 || true)"
-  if [[ -z "$line" ]]; then
-    return 1
-  fi
-  echo "$line" | sed -E 's/.*\(([A-F0-9-]+)\).*/\1/'
+  xcrun simctl list devices available --json | python3 -c '
+import json, sys
+name = sys.argv[1]
+devices = (device for group in json.load(sys.stdin)["devices"].values() for device in group)
+print(next((device["udid"] for device in devices
+            if device["isAvailable"] and device["name"].startswith("iPad")
+            and (not name or device["name"] == name)), ""))
+' "$device_name"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -114,7 +116,7 @@ if [[ -z "$SIMULATOR_UDID" ]]; then
 fi
 
 if [[ -z "$SIMULATOR_UDID" ]]; then
-  echo "Unable to resolve simulator UDID for: $SIMULATOR_NAME" >&2
+  echo "Unable to resolve an available iPad simulator: ${SIMULATOR_NAME:-default}" >&2
   exit 3
 fi
 
@@ -125,7 +127,7 @@ if [[ ! -f "$OUTPUT_PATH" ]]; then
   : > "$OUTPUT_PATH"
 fi
 
-echo "[collector] simulator=$SIMULATOR_NAME udid=$SIMULATOR_UDID"
+echo "[collector] simulator=${SIMULATOR_NAME:-iPad} udid=$SIMULATOR_UDID"
 echo "[collector] url=$URL"
 echo "[collector] output=$OUTPUT_PATH"
 

@@ -15,7 +15,7 @@ Install Xcode 16+ and XcodeGen, then run `xcodegen generate`. The generated Xcod
 ./scripts/ci/check.sh ios-test
 ```
 
-For a specific simulator set `IOS_TEST_DESTINATION='platform=iOS Simulator,id=<device-id>'`. CI compilation/testing disables signing with all three flags: `CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`. These artifacts are not installers.
+The mobile app and broadcast extension target iPad only; `ios-test` selects an available iPad simulator by default. For a specific iPad simulator set `IOS_TEST_DESTINATION='platform=iOS Simulator,id=<device-id>'`. CI compilation/testing disables signing with all three flags: `CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`. These artifacts are not installers.
 
 Live desktop tests are opt-in: set `PICELF_RUN_LIVE_TESTS=1`, grant Screen Recording and Accessibility to a signed test host, and run the selected test from Xcode. Such tests can open/close Preview or Chrome and change scroll positions. Generate anonymous PDF content using `swift scripts/dev/generate-test-pdf.swift`, or supply `PICELF_TEST_PDF_PATH`. Optional video/cache/reference fixtures are provided through the environment variables documented in their tests; they are not committed.
 
