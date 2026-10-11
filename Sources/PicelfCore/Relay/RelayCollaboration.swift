@@ -58,6 +58,8 @@ final class RelayCollaboration {
     private var preparing = Set<UUID>()
     private var previewRevisions: [UUID: Int] = [:]
     private var retryLoop: Task<Void, Never>?
+    /// Includes scheduled tasks before they start, so callers can wait for local work to finish.
+    var hasPendingLocalWork: Bool { !workers.isEmpty || !pending.isEmpty || !preparing.isEmpty }
     var activeID: UUID? { sessions.values.first { !$0.completed }?.taskID }
     var connected: Bool { hub.transport.connected || sendOverride != nil }
     init(hub: RelayCoordinator) {

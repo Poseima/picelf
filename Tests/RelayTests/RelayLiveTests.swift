@@ -43,9 +43,17 @@ final class RelayLiveTests: XCTestCase {
         }
         XCTAssertLessThan(count, 200, "Protocol must not echo indefinitely")
     }
-    private func settle() async {
-        for _ in 0..<30 { pump(); try? await Task.sleep(nanoseconds: 5_000_000) }
+    private func settle(file: StaticString = #filePath, line: UInt = #line) async {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        repeat {
+            pump()
+            if packets.isEmpty && !mac.collaboration.hasPendingLocalWork && !pad.collaboration.hasPendingLocalWork {
+                return
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        } while ContinuousClock.now < deadline
         pump()
+        XCTFail("Relay packets and local composition did not settle within 5 seconds", file: file, line: line)
     }
     private func startAndCommit() async throws {
         try mac.collaboration.start(id); pump()
