@@ -766,6 +766,32 @@ private struct GalleryTile: View {
     private let tileHeight: CGFloat = 284
 
     var body: some View {
+        tileContent
+        .frame(height: tileHeight, alignment: .topLeading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(selected ? Color.white.opacity(0.85) : Color.white.opacity(0.14), lineWidth: selected ? 1.5 : 1)
+                )
+        )
+        .shadow(color: .black.opacity(0.25), radius: selected ? 14 : 8, x: 0, y: 6)
+        .animation(.easeInOut(duration: 0.2), value: selected)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("workbench.image.\(job.id.uuidString)")
+        .accessibilityLabel(job.sourceAppName)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityAction(.default) { onSelect() }
+        .contextMenu { tileContextMenu }
+    }
+
+    private var tileContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             ZStack(alignment: .topLeading) {
                 ThumbnailSurface(job: job, cache: thumbnailCache)
@@ -859,54 +885,34 @@ private struct GalleryTile: View {
             }
             .frame(height: actionRowHeight)
         }
-        .frame(height: tileHeight, alignment: .topLeading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.10))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(selected ? Color.white.opacity(0.85) : Color.white.opacity(0.14), lineWidth: selected ? 1.5 : 1)
-                )
-        )
-        .shadow(color: .black.opacity(0.25), radius: selected ? 14 : 8, x: 0, y: 6)
-        .animation(.easeInOut(duration: 0.2), value: selected)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onSelect()
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("workbench.image.\(job.id.uuidString)")
-        .accessibilityLabel(job.sourceAppName)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-        .accessibilityAction(.default) { onSelect() }
-        .contextMenu {
-            if job.canCopyToClipboard {
-                Button(action: onSaveToDownloads) {
-                    Label(L10n.saveToDownloads, systemImage: "square.and.arrow.down")
-                }
-                .accessibilityIdentifier("workbench.saveToDownloads")
+    }
+
+    @ViewBuilder private var tileContextMenu: some View {
+        if job.canCopyToClipboard {
+            Button(action: onSaveToDownloads) {
+                Label(L10n.saveToDownloads, systemImage: "square.and.arrow.down")
             }
-            if job.status == .completed {
+            .accessibilityIdentifier("workbench.saveToDownloads")
+        }
+        if job.status == .completed {
+            Button {
+                toggleKeep()
+            } label: {
+                Label(job.isPinned ? L10n.unkeepCapture : L10n.keepCapture,
+                      systemImage: job.isPinned ? "bookmark.fill" : "bookmark")
+            }
+            if job.canPinToDesktop {
+                Button { pinToDesktop() } label: {
+                    Label(L10n.pinToDesktop, systemImage: "pin")
+                }
+            }
+            if job.canAddToCanvas {
                 Button {
-                    toggleKeep()
+                    if let image = store.image(for: job.id) {
+                        store.onAddToCanvas?(image)
+                    }
                 } label: {
-                    Label(job.isPinned ? L10n.unkeepCapture : L10n.keepCapture,
-                          systemImage: job.isPinned ? "bookmark.fill" : "bookmark")
-                }
-                if job.canPinToDesktop {
-                    Button { pinToDesktop() } label: {
-                        Label(L10n.pinToDesktop, systemImage: "pin")
-                    }
-                }
-                if job.canAddToCanvas {
-                    Button {
-                        if let image = store.image(for: job.id) {
-                            store.onAddToCanvas?(image)
-                        }
-                    } label: {
-                        Label(L10n.addToCanvas, systemImage: "rectangle.on.rectangle.angled")
-                    }
+                    Label(L10n.addToCanvas, systemImage: "rectangle.on.rectangle.angled")
                 }
             }
         }
