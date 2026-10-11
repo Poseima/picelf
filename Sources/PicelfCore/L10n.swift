@@ -26,6 +26,13 @@ enum L10n {
         zh ? chinese : english
     }
 
+    static var saveToDownloads: String { localized("保存到下载", "Save to Downloads") }
+    static var savedToDownloads: String { localized("已保存到下载", "Saved to Downloads") }
+    static var showInFinder: String { localized("在 Finder 中显示", "Show in Finder") }
+    static var transferFailed: String { localized("图片操作失败", "Image Operation Failed") }
+    static var clipboardCopyFailed: String { localized("无法读取或复制图片。原文件可能已被移除。", "Unable to read or copy the image. The original file may have been removed.") }
+    static var clipboardImportFailed: String { localized("无法导入剪贴板中的图片或文件。请确认内容有效且文件仍可访问。", "Unable to import the clipboard image or file. Check that the content is valid and the file is accessible.") }
+
     // MARK: - Capture Toolbar
 
     static var scroll: String { zh ? "滚动截图" : "Scroll" }

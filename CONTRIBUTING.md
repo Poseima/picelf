@@ -22,3 +22,9 @@ Live desktop tests are opt-in: set `PICELF_RUN_LIVE_TESTS=1`, grant Screen Recor
 Use synthetic fixtures for ordinary tests. Keep Chinese and English text aligned, preserve local data and existing relay compatibility, and include regression coverage when changing capture or rendering behavior. No analytics, ads, accounts or feature-unlock mechanisms should be introduced.
 
 Release checks and manual acceptance are listed in [docs/releasing.md](docs/releasing.md).
+
+## Workbench clipboard and Downloads checks
+
+Workbench clipboard tests use unique pasteboards, isolated preferences and temporary export directories. Run `scripts/ci/check.sh mac-test` for pixel, alpha, paste ordering, PNG/JPEG, collision, cleanup and update-installation protection checks.
+
+`WorkbenchUITests` requires a signed Debug test scheme with `PICELF_RUN_LIVE_TESTS=1`. It launches `--uitest-open-workbench` with isolated preferences/history and checks real Command-C/Command-V, native search text operations, external image imports, context-menu export targets and Chinese/English feedback. Live tests write synthetic exports to Downloads and remove their own exported fixture files. Do not replace an installed stable release with the test build; use a separate Bundle ID for local manual validation.

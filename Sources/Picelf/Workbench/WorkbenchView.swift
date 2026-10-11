@@ -46,7 +46,7 @@ struct WorkbenchView: View {
     @ObservedObject private var prefs = AppPreferences.shared
 
     @State private var filter: WorkbenchFilter = .all
-    @State private var selectedJobID: UUID?
+    @ObservedObject var clipboard: WorkbenchClipboardController
     @State private var inspectorCollapsed = true
     @State private var mosaicVisibleCount = 12
     @State private var lastAutoLoadTriggerKey: MosaicAutoLoadTriggerKey?
@@ -116,8 +116,8 @@ struct WorkbenchView: View {
     }
 
     private var selectedJob: WorkbenchJob? {
-        if let selectedJobID {
-            return store.jobs.first(where: { $0.id == selectedJobID })
+        if let id = clipboard.selectedJobID {
+            return store.jobs.first(where: { $0.id == id && displayedIDs.contains(id) })
         }
         return liveJobs.first ?? filteredGalleryJobs.first
     }
@@ -137,7 +137,16 @@ struct WorkbenchView: View {
                 importDropOverlay
             }
         }
-        .background(shortcutBridge)
+        .overlay(alignment: .bottom) { saveFeedback }
+        .alert(L10n.transferFailed, isPresented: Binding(
+            get: { clipboard.errorMessage != nil },
+            set: { if !$0 { clipboard.errorMessage = nil } }
+        )) { Button(L10n.localized("好", "OK")) { clipboard.errorMessage = nil } }
+          message: { Text(clipboard.errorMessage ?? "") }
+        .onChange(of: clipboard.importedJobID) { _, id in
+            if let id { showImportedImage(id) }
+        }
+        .onChange(of: displayedIDs) { _, _ in syncSelection() }
         .onDrop(of: [UTType.image, UTType.movie, UTType.fileURL], isTargeted: $isImportDropTargeted, perform: handleDrop)
         .onAppear {
             syncSelection()
@@ -146,10 +155,11 @@ struct WorkbenchView: View {
         .onChange(of: store.jobs.count) {
             syncSelection()
         }
-        .onChange(of: outputPathsSnapshot) { paths in
+        .onChange(of: outputPathsSnapshot) { _, paths in
             reconcileThumbnailCache(with: paths)
         }
         .onChange(of: filter) {
+            clipboard.focusGallery?()
             resetMosaicPagination()
             syncSelection()
         }
@@ -338,26 +348,34 @@ struct WorkbenchView: View {
 
     private var content: some View {
         HStack(spacing: 14) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18) {
-                    LiveStageSection(jobs: liveJobs, store: store, selectedJobID: $selectedJobID)
-                        .zIndex(0)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        LiveStageSection(jobs: liveJobs, store: store, selectedJobID: $clipboard.selectedJobID)
+                            .zIndex(0)
 
-                    GalleryMosaicSection(
-                        jobs: mosaicJobsPaged,
-                        store: store,
-                        filter: filter,
-                        selectedJobID: $selectedJobID,
-                        thumbnailCache: thumbnailCache,
-                        hasMore: hasMoreMosaicJobs,
-                        onPrefetchIfNeeded: requestMosaicAutoLoadIfNeeded
-                    )
-                    .zIndex(1)
+                        GalleryMosaicSection(
+                            jobs: mosaicJobsPaged,
+                            store: store,
+                            filter: filter,
+                            selectedJobID: $clipboard.selectedJobID,
+                            thumbnailCache: thumbnailCache,
+                            hasMore: hasMoreMosaicJobs,
+                            onPrefetchIfNeeded: requestMosaicAutoLoadIfNeeded,
+                            clipboard: clipboard
+                        )
+                        .id("gallery-start")
+                        .zIndex(1)
+                    }
+                    .padding(18)
                 }
-                .padding(18)
+                .scrollIndicators(.hidden)
+                .contentShape(Rectangle())
+                .simultaneousGesture(TapGesture().onEnded { clipboard.focusGallery?() })
+                .onChange(of: clipboard.importedJobID) { _, id in
+                    if id != nil { proxy.scrollTo("gallery-start", anchor: .top) }
+                }
             }
-            .id(filter)
-            .scrollIndicators(.hidden)
 
             if !inspectorCollapsed {
                 InspectorPanel(job: selectedJob, store: store, filter: filter)
@@ -376,11 +394,65 @@ struct WorkbenchView: View {
         return L10n.summaryIdle(store.jobs.count)
     }
 
+    private var displayedIDs: [UUID] { (liveJobs + mosaicJobsPaged).map(\.id) }
+
     private func syncSelection() {
-        if let selectedJobID, store.jobs.contains(where: { $0.id == selectedJobID }) {
-            return
+        clipboard.reconcileSelection(displayedIDs: displayedIDs)
+    }
+
+    private func showImportedImage(_ id: UUID) {
+        filter = .all
+        searchText = ""
+        typeFilter = nil
+        timeFilter = .all
+        resetMosaicPagination()
+        clipboard.selectedJobID = id
+        syncSelection()
+        clipboard.focusGallery?()
+    }
+
+    @ViewBuilder private var saveFeedback: some View {
+        if let url = clipboard.savedURL {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(BrandColor.green)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n.savedToDownloads)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    Text(url.lastPathComponent)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 250, alignment: .leading)
+                        .help(url.lastPathComponent)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder")
+                        Text("Finder")
+                    }
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+                .help(L10n.showInFinder)
+                .accessibilityLabel(L10n.showInFinder)
+                .accessibilityIdentifier("workbench.showSavedInFinder")
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial))
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(BrandColor.green.opacity(0.5)))
+            .padding(24)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("workbench.saveFeedback")
         }
-        selectedJobID = liveJobs.first?.id ?? filteredGalleryJobs.first?.id ?? store.jobs.first?.id
     }
 
     private func resetMosaicPagination() {
@@ -412,19 +484,6 @@ struct WorkbenchView: View {
             thumbnailCache.invalidate(path: path)
         }
         trackedOutputPaths = latestPaths
-    }
-
-    private var shortcutBridge: some View {
-        Group {
-            Button("", action: handleCopyShortcut)
-                .keyboardShortcut("c", modifiers: [.command])
-            Button("", action: handlePasteShortcut)
-                .keyboardShortcut("v", modifiers: [.command])
-        }
-        .frame(width: 0, height: 0)
-        .opacity(0.001)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     private var importDropOverlay: some View {
@@ -465,33 +524,6 @@ struct WorkbenchView: View {
         job.isCustomImport ? L10n.custom : job.sourceAppName
     }
 
-    private var isEditingTextInput: Bool {
-        NSApp.keyWindow?.firstResponder is NSTextView
-    }
-
-    private func handleCopyShortcut() {
-        if isEditingTextInput {
-            NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
-            return
-        }
-        guard let job = selectedJob, job.canCopyToClipboard else { return }
-        _ = store.copyResultToClipboard(jobID: job.id)
-    }
-
-    private func handlePasteShortcut() {
-        if isEditingTextInput {
-            NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-            return
-        }
-
-        Task {
-            let importedIDs = await store.importFromPasteboard()
-            if let selectedImportID = importedIDs.last {
-                selectedJobID = selectedImportID
-            }
-        }
-    }
-
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         var accepted = false
 
@@ -513,7 +545,7 @@ struct WorkbenchView: View {
                     Task { @MainActor in
                         let importedIDs = await store.importFiles([url])
                         if let selectedImportID = importedIDs.last {
-                            selectedJobID = selectedImportID
+                            showImportedImage(selectedImportID)
                         }
                     }
                 }
@@ -526,7 +558,7 @@ struct WorkbenchView: View {
                     guard let data, let image = NSImage(data: data) else { return }
                     Task { @MainActor in
                         if let importedID = await store.importImage(image, sourceName: L10n.droppedImage) {
-                            selectedJobID = importedID
+                            showImportedImage(importedID)
                         }
                     }
                 }
@@ -576,6 +608,7 @@ private struct GalleryMosaicSection: View {
     let thumbnailCache: WorkbenchThumbnailCache
     let hasMore: Bool
     let onPrefetchIfNeeded: () -> Void
+    let clipboard: WorkbenchClipboardController
 
     private let prefetchThreshold = 3
     private let columns = [GridItem(.adaptive(minimum: 260, maximum: 360), spacing: 12)]
@@ -595,8 +628,10 @@ private struct GalleryMosaicSection: View {
                             filter: filter,
                             selected: selectedJobID == job.id,
                             thumbnailCache: thumbnailCache,
-                            onSelect: { selectedJobID = job.id }
+                            onSelect: { clipboard.select(job.id) },
+                            onSaveToDownloads: { clipboard.saveToDownloads(job.id) }
                         )
+                        .id(job.id)
                         .onAppear {
                             guard hasMore else { return }
                             guard shouldPrefetch(index: index, totalCount: jobs.count) else { return }
@@ -724,6 +759,7 @@ private struct GalleryTile: View {
     let selected: Bool
     let thumbnailCache: WorkbenchThumbnailCache
     let onSelect: () -> Void
+    let onSaveToDownloads: () -> Void
     private let titleSlotHeight: CGFloat = 38
     private let metadataRowHeight: CGFloat = 14
     private let actionRowHeight: CGFloat = 28
@@ -839,7 +875,18 @@ private struct GalleryTile: View {
         .onTapGesture {
             onSelect()
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("workbench.image.\(job.id.uuidString)")
+        .accessibilityLabel(job.sourceAppName)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .accessibilityAction(.default) { onSelect() }
         .contextMenu {
+            if job.canCopyToClipboard {
+                Button(action: onSaveToDownloads) {
+                    Label(L10n.saveToDownloads, systemImage: "square.and.arrow.down")
+                }
+                .accessibilityIdentifier("workbench.saveToDownloads")
+            }
             if job.status == .completed {
                 Button {
                     toggleKeep()
@@ -1087,6 +1134,7 @@ private struct WorkbenchSearchBar: View {
                     .foregroundStyle(Color.white.opacity(0.5))
 
                 TextField(L10n.searchPlaceholder, text: $searchText)
+                    .accessibilityIdentifier("workbench.search")
                     .textFieldStyle(.plain)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.white)

@@ -81,6 +81,30 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertFalse(controller.validateMenuItem(item))
     }
 
+    func test_clipboardTransfersBlockTerminationAndRequireExplicitResume() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("picelf-update-transfer-\(UUID())")
+        let board = NSPasteboard.withUniqueName()
+        let store = WorkbenchStore(outputDirectory: root, jobsFileURL: root.appendingPathComponent("jobs.json"),
+                                   preferences: AppPreferences(defaults: defaults), clipboard: board)
+        defer { store.shutdownForTesting(); board.releaseGlobally(); try? FileManager.default.removeItem(at: root) }
+        board.setData(makeStripedImage(width: 300, height: 200).tiffRepresentation!, forType: .tiff)
+        let updates = controller(Backend(defaults: defaults), activity: { UpdateActivity(jobs: store.hasActiveWork) })
+        let clipboard = WorkbenchClipboardController(store: store)
+        var resumes = 0
+        let paste = try XCTUnwrap(clipboard.paste(from: board))
+        XCTAssertTrue(updates.postponeInstallation { resumes += 1 })
+        XCTAssertFalse(updates.shouldAllowTermination())
+        await paste.value
+        XCTAssertEqual(resumes, 0)
+        XCTAssertEqual(store.jobs.count, 1)
+        updates.continueInstallation()
+        XCTAssertEqual(resumes, 1)
+        let second = try XCTUnwrap(clipboard.paste(from: board))
+        XCTAssertFalse(updates.shouldAllowTermination())
+        await second.value
+        XCTAssertEqual(resumes, 1)
+    }
+
     func test_automaticCheckChoiceSurvivesControllerRecreation() {
         let first = controller(Backend(defaults: defaults))
         XCTAssertTrue(first.automaticallyChecksForUpdates)

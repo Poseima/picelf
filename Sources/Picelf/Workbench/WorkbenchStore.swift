@@ -6,6 +6,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import Combine
 import os
+import Darwin
 
 private let workbenchLog = Logger(subsystem: "com.picelf", category: "Workbench")
 
@@ -51,6 +52,7 @@ private struct ManagedOutputPersistenceError: LocalizedError {
 
 @MainActor
 final class WorkbenchStore: ObservableObject {
+    @Published private(set) var transferCount = 0
     @Published private(set) var jobs: [WorkbenchJob] = []
     @Published private(set) var lastEnqueuedJobID: UUID?
 
@@ -69,6 +71,9 @@ final class WorkbenchStore: ObservableObject {
     private var queue: [UUID] = []
     private var running: Set<UUID> = []
     private var userCancelled: Set<UUID> = []
+    private let downloadPublisher: @Sendable (URL, URL) throws -> Bool
+    private let clipboard: NSPasteboard
+    private let downloadsDirectory: URL?
     private let outputDirectory: URL
     private let jobsFileURL: URL
     private let preferences: AppPreferences
@@ -87,8 +92,14 @@ final class WorkbenchStore: ObservableObject {
         jobsFileURL: URL? = nil,
         preferences: AppPreferences = .shared,
         now: @escaping () -> Date = Date.init,
-        managedFileOperations: ManagedFileOperations = .live
+        managedFileOperations: ManagedFileOperations = .live,
+        downloadsDirectory: URL? = nil,
+        clipboard: NSPasteboard = .general,
+        downloadPublisher: @escaping @Sendable (URL, URL) throws -> Bool = { try WorkbenchStore.publishDownload($0, $1) }
     ) {
+        self.downloadPublisher = downloadPublisher
+        self.clipboard = clipboard
+        self.downloadsDirectory = downloadsDirectory
         self.maxConcurrentJobs = max(1, maxConcurrentJobs)
         let root = outputDirectory ?? Self.defaultOutputDirectory
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -102,6 +113,13 @@ final class WorkbenchStore: ObservableObject {
         purgeExpiredJobs(reason: "startup")
         scheduleNextExpiryCheck()
     }
+
+    var hasActiveWork: Bool {
+        runningCount + queuedCount + transferCount > 0 || jobs.contains { $0.status == .processing }
+    }
+
+    func beginTransfer() { transferCount += 1 }
+    func endTransfer() { transferCount -= 1 }
 
     var runningCount: Int { running.count }
     var queuedCount: Int { queue.count }
@@ -388,16 +406,56 @@ final class WorkbenchStore: ObservableObject {
     }
 
     @discardableResult
-    func copyResultToClipboard(jobID: UUID) -> Bool {
-        guard let image = image(for: jobID) else { return false }
-        let clipboardImage = CaptureOutputWatermarking.render(image)
-        do {
-            try clipboardImage.copyToClipboard()
-            return true
-        } catch {
-            workbenchLog.error("Failed to copy job \(jobID.uuidString, privacy: .public) to clipboard: \(error.localizedDescription)")
-            return false
+    func copyResultToClipboard(jobID: UUID, pasteboard: NSPasteboard? = nil) -> Bool {
+        let pasteboard = pasteboard ?? clipboard
+        guard let image = image(for: jobID),
+              let cg = WatermarkRenderer.apply(to: image, config: preferences.watermarkConfig).cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let data = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return false }
+        pasteboard.clearContents()
+        return pasteboard.setData(data, forType: .png)
+    }
+
+    func saveResultToDownloads(jobID: UUID) async throws -> URL {
+        beginTransfer()
+        defer { endTransfer() }
+        guard let image = image(for: jobID) else {
+            throw CocoaError(.fileReadNoSuchFile)
         }
+        let box = SnapPersistImageBox(WatermarkRenderer.apply(to: image, config: preferences.watermarkConfig))
+        let format: ImageExporter.Format = preferences.defaultFormat == .png
+            ? .png : .jpeg(quality: CGFloat(preferences.jpegQuality))
+        let directory = try downloadsDirectory ?? FileManager.default.url(
+            for: .downloadsDirectory, in: .userDomainMask, appropriateFor: nil, create: false)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let name = "Picelf-\(formatter.string(from: now()))"
+        let publish = downloadPublisher
+        return try await Task.detached(priority: .userInitiated) {
+            let temporary = directory.appendingPathComponent(".Picelf-\(UUID().uuidString).tmp")
+            defer { try? FileManager.default.removeItem(at: temporary) }
+            if let cg = box.cgImage {
+                try ImageExporter.export(cg, to: temporary, format: format)
+            } else {
+                try ImageExporter.export(box.image, to: temporary, format: format)
+            }
+            // A same-volume hard link publishes the completed file atomically and
+            // fails with EEXIST rather than overwriting a concurrent export.
+            var number = 1
+            while true {
+                let suffix = number == 1 ? "" : " (\(number))"
+                let destination = directory.appendingPathComponent("\(name)\(suffix).\(format.fileExtension)")
+                if try publish(temporary, destination) { return destination }
+                number += 1
+            }
+        }.value
+    }
+
+    nonisolated static func publishDownload(_ temporary: URL, _ destination: URL) throws -> Bool {
+        if link(temporary.path, destination.path) == 0 { return true }
+        let code = errno
+        if code == EEXIST { return false }
+        throw NSError(domain: NSPOSIXErrorDomain, code: Int(code))
     }
 
     func markPinned(jobID: UUID) {
@@ -426,32 +484,23 @@ final class WorkbenchStore: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
-    func importFromPasteboard() async -> [UUID] {
-        let pasteboard = NSPasteboard.general
-        let fileURLs = (pasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]
-        ) as? [NSURL] ?? []).map { $0 as URL }
-        if !fileURLs.isEmpty {
-            return await importFiles(fileURLs)
-        }
+    func importFromPasteboard(_ pasteboard: NSPasteboard? = nil) async -> [UUID] {
+        await importSnapshot(WorkbenchPasteboardSnapshot(pasteboard ?? clipboard))
+    }
 
-        if let pngData = pasteboard.data(forType: .png),
-           let image = NSImage(data: pngData),
-           let importedID = await importImage(image, sourceName: L10n.clipboard) {
-            return [importedID]
+    func importSnapshot(_ snapshot: WorkbenchPasteboardSnapshot) async -> [UUID] {
+        if !snapshot.fileURLs.isEmpty { return await importFiles(snapshot.fileURLs) }
+        for data in snapshot.imageData {
+            if let image = NSImage(data: data), let id = await importImage(image, sourceName: L10n.clipboard) {
+                return [id]
+            }
         }
-
-        if let tiffData = pasteboard.data(forType: .tiff),
-           let image = NSImage(data: tiffData),
-           let importedID = await importImage(image, sourceName: L10n.clipboard) {
-            return [importedID]
-        }
-
         return []
     }
 
     func importFiles(_ urls: [URL]) async -> [UUID] {
+        beginTransfer()
+        defer { endTransfer() }
         var importedIDs: [UUID] = []
         var seenPaths = Set<String>()
 
@@ -485,6 +534,8 @@ final class WorkbenchStore: ObservableObject {
     }
 
     func importImage(_ image: NSImage, sourceName: String) async -> UUID? {
+        beginTransfer()
+        defer { endTransfer() }
         let id = UUID()
         let outputURL = makeOutputURL(jobID: id)
         let imageBox = SnapPersistImageBox(image)
@@ -525,6 +576,8 @@ final class WorkbenchStore: ObservableObject {
     }
 
     func importVideo(from sourceURL: URL, sourceName: String) async -> UUID? {
+        beginTransfer()
+        defer { endTransfer() }
         let id = UUID()
         let outputURL = makeOutputURL(jobID: id, extension: sourceURL.pathExtension.isEmpty ? "mov" : sourceURL.pathExtension)
 
@@ -866,8 +919,7 @@ final class WorkbenchStore: ObservableObject {
 
         // Auto-open only for image captures (not video)
         if runner.outputFileURL == nil {
-            let clipboardImage = CaptureOutputWatermarking.render(image)
-            try? clipboardImage.copyToClipboard()
+            copyResultToClipboard(jobID: jobID)
             onOpenImage?(image, persistedURL)
         }
 

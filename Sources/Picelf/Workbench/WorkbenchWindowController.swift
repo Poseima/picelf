@@ -5,6 +5,7 @@ import SwiftUI
 final class WorkbenchWindowController {
     private let store: WorkbenchStore
     private var window: NSWindow?
+    private var clipboardResponder: WorkbenchClipboardResponder?
 
     init(store: WorkbenchStore) {
         self.store = store
@@ -26,7 +27,8 @@ final class WorkbenchWindowController {
             return existing
         }
 
-        let root = WorkbenchView(store: store)
+        let clipboard = WorkbenchClipboardController(store: store)
+        let root = WorkbenchView(store: store, clipboard: clipboard)
         let hosting = NSHostingView(rootView: root)
 
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 820)
@@ -51,6 +53,15 @@ final class WorkbenchWindowController {
             window.center()
         }
         window.contentView = hosting
+        let responder = WorkbenchClipboardResponder(clipboard: clipboard)
+        responder.window = window
+        responder.nextResponder = window.nextResponder
+        window.nextResponder = responder
+        clipboard.focusGallery = { [weak window] in
+            window?.makeFirstResponder(nil)
+        }
+        clipboardResponder = responder
+        window.setAccessibilityIdentifier("workbench.window")
         self.window = window
         return window
     }

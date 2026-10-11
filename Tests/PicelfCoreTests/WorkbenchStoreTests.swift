@@ -303,17 +303,17 @@ final class WorkbenchStoreTests: XCTestCase {
     }
 
     func test_importFromPasteboardCreatesCustomClipboardImageJob() async throws {
-        let pasteboard = NSPasteboard.general
+        let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
         defer { pasteboard.clearContents() }
 
         let clipboardImage = makeStripedImage(width: 160, height: 96)
-        try clipboardImage.copyToClipboard()
+        pasteboard.setData(NSBitmapImageRep(cgImage: clipboardImage.cgImage(forProposedRect: nil, context: nil, hints: nil)!).representation(using: .png, properties: [:])!, forType: .png)
 
         let store = makeIsolatedStore(maxConcurrentJobs: 1)
         defer { store.shutdownForTesting() }
 
-        let importedIDs = await store.importFromPasteboard()
+        let importedIDs = await store.importFromPasteboard(pasteboard)
         guard let importedID = importedIDs.first,
               let job = store.jobs.first(where: { $0.id == importedID }) else {
             XCTFail("Expected imported clipboard image job")
@@ -327,7 +327,7 @@ final class WorkbenchStoreTests: XCTestCase {
     }
 
     func test_copyResultToClipboardCopiesCompletedImportedImage() async throws {
-        let pasteboard = NSPasteboard.general
+        let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
         defer { pasteboard.clearContents() }
 
@@ -342,7 +342,7 @@ final class WorkbenchStoreTests: XCTestCase {
             XCTFail("Expected imported image id")
             return
         }
-        XCTAssertTrue(store.copyResultToClipboard(jobID: importedID))
+        XCTAssertTrue(store.copyResultToClipboard(jobID: importedID, pasteboard: pasteboard))
         XCTAssertNotNil(pasteboard.data(forType: .png))
     }
 
@@ -493,7 +493,9 @@ final class WorkbenchStoreTests: XCTestCase {
         config.fontSize = 26
         prefs.watermarkConfig = config
 
-        let store = makeIsolatedStore(maxConcurrentJobs: 1)
+        let pasteboard = NSPasteboard.withUniqueName()
+        defer { pasteboard.releaseGlobally() }
+        let store = makeIsolatedStore(maxConcurrentJobs: 1, clipboard: pasteboard)
         defer { store.shutdownForTesting() }
         let baseImage = makeStripedImage(width: 240, height: 150)
         let runner = FakeWorkbenchRunner(plans: [.success(baseImage, delayMS: 20)])
@@ -502,7 +504,6 @@ final class WorkbenchStoreTests: XCTestCase {
         let completed = await waitForJob(in: store, titled: "Clipboard Watermark", status: .completed)
         XCTAssertNotNil(completed)
 
-        let pasteboard = NSPasteboard.general
         guard let data = pasteboard.data(forType: .png), let clipboardImage = NSImage(data: data) else {
             XCTFail("Expected PNG data on pasteboard")
             return
@@ -751,7 +752,8 @@ final class WorkbenchStoreTests: XCTestCase {
 
     private func makeIsolatedStore(
         maxConcurrentJobs: Int,
-        preferences: AppPreferences = AppPreferences.shared
+        preferences: AppPreferences = AppPreferences.shared,
+        clipboard: NSPasteboard = .withUniqueName()
     ) -> WorkbenchStore {
         let outputDirectory = makeTempOutputDirectory()
         let jobsFileURL = makeTempJobsFileURL()
@@ -759,7 +761,8 @@ final class WorkbenchStoreTests: XCTestCase {
             maxConcurrentJobs: maxConcurrentJobs,
             outputDirectory: outputDirectory,
             jobsFileURL: jobsFileURL,
-            preferences: preferences
+            preferences: preferences,
+            clipboard: clipboard
         )
     }
 }

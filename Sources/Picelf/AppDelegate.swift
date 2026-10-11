@@ -29,7 +29,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         log.info("App launched — applicationDidFinishLaunching")
-        if ProcessInfo.processInfo.arguments.contains("--uitest-open-preferences"),
+        if (ProcessInfo.processInfo.arguments.contains("--uitest-open-preferences") ||
+            (ProcessInfo.processInfo.arguments.contains("--uitest-open-workbench") &&
+             ProcessInfo.processInfo.environment["PICELF_RUN_LIVE_TESTS"] == "1")),
            let suite = ProcessInfo.processInfo.environment["PICELF_UI_TEST_PREFERENCES_SUITE"],
            let defaults = UserDefaults(suiteName: suite) {
             defaults.removePersistentDomain(forName: suite)
@@ -51,7 +53,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             log.notice("Purged \(purgedArtifacts) stale workbench test artifact(s) from temporary directory")
         }
 
-        workbenchStore = WorkbenchStore(maxConcurrentJobs: 2)
+        if ProcessInfo.processInfo.arguments.contains("--uitest-open-workbench"),
+           ProcessInfo.processInfo.environment["PICELF_RUN_LIVE_TESTS"] == "1" {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("WorkbenchUIFixtures")
+            try? FileManager.default.removeItem(at: root)
+            workbenchStore = WorkbenchStore(outputDirectory: root.appendingPathComponent("Results"),
+                                           jobsFileURL: root.appendingPathComponent("jobs.json"))
+        } else {
+            workbenchStore = WorkbenchStore(maxConcurrentJobs: 2)
+        }
         RelayMacController.shared.workbenchStore = workbenchStore
         workbenchStore.onOpenImage = { [weak self] image, url in
             self?.showEditWindow(image: image, sourceURL: url)
@@ -159,6 +169,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.updateActivity ?? UpdateActivity()
         }
 
+        if ProcessInfo.processInfo.arguments.contains("--uitest-open-workbench"),
+           ProcessInfo.processInfo.environment["PICELF_RUN_LIVE_TESTS"] == "1" {
+            Task { @MainActor in
+                _ = await workbenchStore.importImage(makeUITestImage(), sourceName: "Workbench UI fixture")
+                workbenchWindowController?.show(activate: true)
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("--uitest-open-preferences") {
             preferencesWindowController?.show()
         }
@@ -179,7 +196,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 capture?.isSnapEditing == true || orchestrator?.framePanel?.isVisible == true,
             recording: recording?.showingConfig == true || recording?.isPreparingRecording == true ||
                 recording?.isRecording == true,
-            jobs: (workbenchStore?.runningCount ?? 0) + (workbenchStore?.queuedCount ?? 0) > 0,
+            jobs: workbenchStore?.hasActiveWork == true,
             relay: relay.collaboration.activeID != nil || relay.tasks.contains {
                 $0.state == .editing || $0.state == .returning
             },
