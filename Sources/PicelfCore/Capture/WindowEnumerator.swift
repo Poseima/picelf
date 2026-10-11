@@ -46,21 +46,44 @@ struct WindowInfo: Identifiable, Hashable {
 
 @MainActor
 class WindowEnumerator: ObservableObject {
+    struct Candidate {
+        let info: WindowInfo
+        let layer: Int
+    }
+
+    struct Snapshot {
+        let windows: [Candidate]
+        let displayIDs: [CGDirectDisplayID]
+    }
+
     @Published var windows: [WindowInfo] = []
     @Published var error: Error?
+    @Published private(set) var displayIDs: [CGDirectDisplayID] = []
+    private let contentProvider: @MainActor () async throws -> Snapshot
+
+    init(contentProvider: @escaping @MainActor () async throws -> Snapshot = {
+        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+        return Snapshot(
+            windows: content.windows.map { Candidate(info: WindowInfo(from: $0), layer: $0.windowLayer) },
+            displayIDs: content.displays.map(\.displayID)
+        )
+    }) {
+        self.contentProvider = contentProvider
+    }
 
     func refreshAvailableContent() async {
         log.info("refreshAvailableContent() called")
 
         do {
-            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+            let content = try await contentProvider()
             let allWindows = content.windows
             log.info("SCShareableContent returned \(allWindows.count) raw windows")
 
             self.windows = allWindows
-                .filter { $0.frame.width > 50 && $0.frame.height > 50 }
-                .filter { $0.windowLayer == 0 }
-                .map { WindowInfo(from: $0) }
+                .filter { $0.info.frame.width > 50 && $0.info.frame.height > 50 }
+                .filter { $0.layer == 0 }
+                .map(\.info)
+            self.displayIDs = content.displayIDs
 
             log.info("After filtering: \(self.windows.count) eligible windows")
             for (i, w) in self.windows.prefix(5).enumerated() {
@@ -70,12 +93,14 @@ class WindowEnumerator: ObservableObject {
             if self.windows.isEmpty && !allWindows.isEmpty {
                 log.warning("All \(allWindows.count) windows were filtered out (too small or wrong layer)")
             } else if self.windows.isEmpty {
-                log.error("0 windows returned — screen recording permission likely denied. Check System Settings > Privacy & Security > Screen Recording")
+                log.info("No application windows; \(self.displayIDs.count) displays remain available for capture")
             }
 
             self.error = nil
         } catch {
             log.error("SCShareableContent.excludingDesktopWindows threw: \(error.localizedDescription)")
+            self.windows = []
+            self.displayIDs = []
             self.error = error
         }
     }

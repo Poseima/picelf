@@ -215,8 +215,8 @@ enum L10n {
         zh ? "需要签名构建来验证麦克风权限" : "A Signed Build Is Required for Microphone Permission Testing"
     }
     static var screenRecordingBody: String {
-        zh ? "Picelf 需要屏幕录制权限才能捕获窗口。\n\n步骤：\n1. 点击下方「打开系统设置」\n2. 找到「Picelf」并开启\n   （如果列表中没有，点击 + 添加）\n3. 授权后重启 Picelf"
-           : "Picelf needs Screen Recording access to capture windows.\n\nSteps:\n1. Click \"Open System Settings\" below\n2. Find \"Picelf\" and toggle it ON\n   (If Picelf isn't listed, click + and add it)\n3. Restart Picelf after granting access"
+        zh ? "Picelf 需要屏幕录制权限才能捕获屏幕和窗口。\n\n步骤：\n1. 点击下方「打开系统设置」\n2. 找到「Picelf」并开启\n   （如果列表中没有，点击 + 添加）\n3. 授权后重启 Picelf"
+           : "Picelf needs Screen Recording access to capture screens and windows.\n\nSteps:\n1. Click \"Open System Settings\" below\n2. Find \"Picelf\" and toggle it ON\n   (If Picelf isn't listed, click + and add it)\n3. Restart Picelf after granting access"
     }
     static var microphonePermissionBody: String {
         zh ? "Picelf 仅在你启用录屏麦克风时才会使用麦克风。\n\n步骤：\n1. 点击下方「打开系统设置」\n2. 在“隐私与安全性 > 麦克风”中找到“Picelf”并开启\n3. 返回 Picelf 后再次启用麦克风"
@@ -230,10 +230,20 @@ enum L10n {
     static var exitAndOpenSystemSettings: String {
         zh ? "退出并打开系统设置" : "Exit and Open System Settings"
     }
-    static var noWindowsFound: String { zh ? "未找到窗口" : "No Windows Found" }
-    static var noWindowsBody: String {
-        zh ? "Picelf 找不到可捕获的窗口。\n\n请确保至少有一个应用窗口打开且可见。\n\n如果问题持续，请在系统设置 > 隐私与安全性 > 屏幕录制中关闭再开启 Picelf，然后重启。"
-           : "Picelf could not find any capturable windows.\n\nMake sure you have at least one application window open and visible.\n\nIf the issue persists, try toggling Picelf off and on in System Settings > Privacy & Security > Screen Recording, then restart Picelf."
+    static var captureContentUnavailable: String { zh ? "无法获取捕获内容" : "Capture Content Unavailable" }
+    static var captureContentUnavailableBody: String {
+        zh ? "无法获取系统的屏幕和窗口列表。请稍后重试。"
+           : "Could not retrieve the system's screens and windows. Please try again."
+    }
+    static var noCapturableDisplay: String { zh ? "未找到可捕获的屏幕" : "No Capturable Screen" }
+    static var noCapturableDisplayBody: String {
+        zh ? "当前屏幕不可用于捕获。请确认显示器已连接并唤醒，然后重试。"
+           : "The current screen is unavailable for capture. Check that your display is connected and awake, then try again."
+    }
+    static var screenSnapshotFailed: String { zh ? "无法截取屏幕图像" : "Screen Snapshot Failed" }
+    static var screenSnapshotFailedBody: String {
+        zh ? "无法读取当前屏幕的图像。请重试；如果问题持续，请检查 Picelf 的屏幕录制权限。"
+           : "Could not read the current screen image. Please try again; if the issue persists, check Picelf's Screen Recording access."
     }
     static var ok: String { "OK" }
     static var invalidCaptureArea: String { zh ? "无效的捕获区域" : "Invalid Capture Area" }

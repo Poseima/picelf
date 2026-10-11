@@ -102,6 +102,31 @@ struct RecordingFailureAlertContent: Equatable {
     let detail: String
 }
 
+enum CaptureActivationFailure: Equatable {
+    case permissionDenied
+    case contentEnumerationFailed(String)
+    case noCapturableDisplay
+    case snapshotFailed
+
+    var title: String {
+        switch self {
+        case .permissionDenied: return L10n.screenRecordingRequired
+        case .contentEnumerationFailed: return L10n.captureContentUnavailable
+        case .noCapturableDisplay: return L10n.noCapturableDisplay
+        case .snapshotFailed: return L10n.screenSnapshotFailed
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .permissionDenied: return L10n.screenRecordingBody
+        case .contentEnumerationFailed(let reason): return "\(L10n.captureContentUnavailableBody)\n\n\(reason)"
+        case .noCapturableDisplay: return L10n.noCapturableDisplayBody
+        case .snapshotFailed: return L10n.screenSnapshotFailedBody
+        }
+    }
+}
+
 struct CaptureSubmission {
     let runner: any WorkbenchStitchJobRuntime
     let windowInfo: WindowInfo?
@@ -158,7 +183,10 @@ class CaptureOrchestrator: ObservableObject {
         }
     }
 
-    let windowEnumerator = WindowEnumerator()
+    let windowEnumerator: WindowEnumerator
+    private let frozenImageProvider: ((NSScreen) -> CGImage?)?
+    private let clipboardWriter: (NSImage) throws -> Void
+    private(set) var lastActivationFailure: CaptureActivationFailure?
     let captureStream = WindowCaptureStream()
     private(set) var stitchingCoordinator = StitchingCoordinator()
     let captureState = CaptureState()
@@ -201,6 +229,17 @@ class CaptureOrchestrator: ObservableObject {
         let draft: EditorAnnotation?
         let windowInfo: WindowInfo?
         let captureRect: CGRect
+        let pixelScale: CGFloat
+    }
+
+    init(
+        windowEnumerator: WindowEnumerator? = nil,
+        frozenImageProvider: ((NSScreen) -> CGImage?)? = nil,
+        clipboardWriter: @escaping (NSImage) throws -> Void = { try $0.copyToClipboard() }
+    ) {
+        self.windowEnumerator = windowEnumerator ?? WindowEnumerator()
+        self.frozenImageProvider = frozenImageProvider
+        self.clipboardWriter = clipboardWriter
     }
 
     /// Activate capture mode: show frame overlay and pill toolbar.
@@ -210,27 +249,28 @@ class CaptureOrchestrator: ObservableObject {
             log.warning("activate() called while overlay is still active — cleaning up stale panels first")
             deactivate()
         }
+        lastActivationFailure = nil
         onWillActivate?()
 
         await windowEnumerator.refreshAvailableContent()
         log.info("Window enumeration complete: \(self.windowEnumerator.windows.count) windows found")
 
-        // If no windows found, check if it's a permission error (TCC) or just no windows open
-        if windowEnumerator.windows.isEmpty {
-            if windowEnumerator.error != nil {
-                log.error("0 windows + error from SCShareableContent — likely TCC permission denied")
-                showPermissionAlert()
-            } else {
-                log.error("0 windows but no error — no capturable windows are open")
-                showNoWindowsAlert()
-            }
+        // Application windows are optional: a bare desktop is still capturable.
+        if let error = windowEnumerator.error {
+            let nsError = error as NSError
+            let failure: CaptureActivationFailure = nsError.domain == SCStreamErrorDomain
+                && nsError.code == SCStreamError.Code.userDeclined.rawValue
+                ? .permissionDenied : .contentEnumerationFailed(error.localizedDescription)
+            failActivation(failure)
             return
         }
 
         let mousePos = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(mousePos) })
-                ?? NSScreen.main else {
-            log.error("No screen available — aborting activate()")
+                ?? NSScreen.main,
+              let displayID = Self.displayID(for: screen),
+              windowEnumerator.displayIDs.contains(displayID) else {
+            failActivation(.noCapturableDisplay)
             return
         }
         activeScreen = screen
@@ -238,10 +278,7 @@ class CaptureOrchestrator: ObservableObject {
         activeScreenFrontToBackWindowIDs = frontToBackWindowIDs(on: screen)
 
         guard let frozenImage = captureFrozenImage(for: screen) else {
-            showStitchingFailedAlert(
-                message: L10n.invalidCaptureArea,
-                detail: "Failed to capture frozen screen image."
-            )
+            failActivation(.snapshotFailed)
             return
         }
         frozenScreenCGImage = frozenImage
@@ -339,16 +376,25 @@ class CaptureOrchestrator: ObservableObject {
         }
     }
 
-    private func showNoWindowsAlert() {
+    private func failActivation(_ failure: CaptureActivationFailure) {
+        log.error("Capture activation failed: \(failure.title) — \(failure.detail)")
+        deactivate()
+        captureState.frameRect = .zero
+        captureState.selectedWindowID = nil
+        captureState.mode = .idleSelecting
+        lastActivationFailure = failure
+        if failure == .permissionDenied {
+            showPermissionAlert()
+            return
+        }
         guard !suppressAlerts else {
-            log.warning("Alert suppressed: No Windows Found")
             return
         }
         NSApp.activate(ignoringOtherApps: true)
 
         let alert = NSAlert()
-        alert.messageText = L10n.noWindowsFound
-        alert.informativeText = L10n.noWindowsBody
+        alert.messageText = failure.title
+        alert.informativeText = failure.detail
         alert.alertStyle = .warning
         alert.addButton(withTitle: L10n.ok)
         alert.runModal()
@@ -1414,8 +1460,7 @@ class CaptureOrchestrator: ObservableObject {
             screenFrame: screen.frame,
             onCancel: { [weak self] in self?.deactivate() },
             onManualSelectionCommitted: { [weak self] in
-                guard let self else { return }
-                self.pendingAutoSnapCapture = true
+                self?.manualSelectionCommitted()
             },
             onRestartFramingRequested: { [weak self] in
                 self?.restartFramingFromAutoCoverDrag()
@@ -1425,6 +1470,10 @@ class CaptureOrchestrator: ObservableObject {
             }
         )
         return FirstMousePassthroughHostingView(rootView: frameView.ignoresSafeArea())
+    }
+
+    func manualSelectionCommitted() {
+        pendingAutoSnapCapture = true
     }
 
     private func handleSnapEditFrameTap(at screenPoint: CGPoint) {
@@ -1543,6 +1592,7 @@ class CaptureOrchestrator: ObservableObject {
     }
 
     private func captureFrozenImage(for screen: NSScreen) -> CGImage? {
+        if let frozenImageProvider { return frozenImageProvider(screen) }
         if let displayID = Self.displayID(for: screen),
            let displayImage = CGDisplayCreateImage(displayID) {
             return displayImage
@@ -1761,21 +1811,20 @@ class CaptureOrchestrator: ObservableObject {
     // MARK: - Snap Capture
 
     private func resolveSelectedWindowIDForCurrentFrame() -> CGWindowID? {
+        let candidates: [WindowInfo]
+        if let screen = activeScreen {
+            candidates = windows(on: screen, from: windowEnumerator.windows)
+        } else {
+            candidates = windowEnumerator.windows
+        }
         if let selectedWindowID = captureState.selectedWindowID,
-           windowEnumerator.windows.contains(where: { $0.id == selectedWindowID }) {
+           candidates.contains(where: { $0.id == selectedWindowID }) {
             return selectedWindowID
         }
 
         let center = CGPoint(x: captureState.frameRect.midX, y: captureState.frameRect.midY)
-        let candidates: [WindowInfo]
-        if let screen = activeScreen {
-            let windowsOnScreen = windows(on: screen, from: windowEnumerator.windows)
-            candidates = windowsOnScreen.isEmpty ? windowEnumerator.windows : windowsOnScreen
-        } else {
-            candidates = windowEnumerator.windows
-        }
-
         guard let nearest = WindowEnumerator.findClosestWindow(to: center, in: candidates) else {
+            captureState.selectedWindowID = nil
             return nil
         }
         captureState.selectedWindowID = nearest.id
@@ -2034,7 +2083,8 @@ class CaptureOrchestrator: ObservableObject {
             annotations: document.visibleAnnotations,
             draft: document.draftAnnotation,
             windowInfo: snapEditWindowInfo,
-            captureRect: captureState.frameRect
+            captureRect: captureState.frameRect,
+            pixelScale: captureState.frozenPixelScaleX
         )
 
         exitSnapEditMode()
@@ -2048,7 +2098,8 @@ class CaptureOrchestrator: ObservableObject {
                 baseImage: payload.baseImage,
                 imageSize: payload.imageSize,
                 annotations: payload.annotations,
-                draft: payload.draft
+                draft: payload.draft,
+                pixelScale: payload.pixelScale
             ) else {
                 log.error("Snap edit confirm failed — compose returned nil")
                 return
@@ -2076,7 +2127,7 @@ class CaptureOrchestrator: ObservableObject {
             let copyStart = CFAbsoluteTimeGetCurrent()
             let clipboardImage = CaptureOutputWatermarking.render(image)
             do {
-                try clipboardImage.copyToClipboard()
+                try self.clipboardWriter(clipboardImage)
                 let copyMs = Int((CFAbsoluteTimeGetCurrent() - copyStart) * 1000.0)
                 if copyMs > 120 {
                     log.warning("Snap clipboard copy slow \(copyMs)ms")
