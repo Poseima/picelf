@@ -34,7 +34,10 @@ final class PreferencesTests: XCTestCase {
             XCTAssertEqual(window.frame, initialFrame)
         }
 
-        window.setContentSize(NSSize(width: 980, height: 700))
+        // Keep the resized window on screen. AppKit legitimately constrains an
+        // off-screen window when reopening it on the smaller CI display.
+        window.setContentSize(NSSize(width: 940, height: 640))
+        window.center()
         let resizedFrame = window.frame
         controller.show(tab: .translation)
         XCTAssertEqual(window.frame, resizedFrame)

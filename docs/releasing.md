@@ -1,6 +1,6 @@
 # Releasing Picelf
 
-Official releases contain a universal Mac DMG, an Ed25519-signed `appcast.xml`, and SHA-256 checksums for both files. iOS is source-only. The initial integration with in-app updates is `1.0.1` (build 2); the earlier `1.0.0` candidate predates the updater.
+Official releases contain a universal Mac DMG, an Ed25519-signed `appcast.xml`, and SHA-256 checksums for both files. iOS is source-only. The first published release with in-app updates is `1.0.2` (build 3); the earlier `1.0.0` candidate predates the updater.
 
 ## Credentials
 
