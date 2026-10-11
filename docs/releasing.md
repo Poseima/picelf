@@ -1,6 +1,6 @@
 # Releasing Picelf
 
-Official releases contain a universal Mac DMG and SHA-256 checksums. iOS is source-only. The first version is `1.0.0`.
+Official releases contain a universal Mac DMG, an Ed25519-signed `appcast.xml`, and SHA-256 checksums for both files. iOS is source-only. The initial integration with in-app updates is `1.0.1` (build 2); the earlier `1.0.0` candidate predates the updater.
 
 ## Credentials
 
@@ -12,6 +12,7 @@ Configure the GitHub Actions environment named `release` with these secrets:
 - `DEVELOPER_ID_P12_PASSWORD`: export password.
 - `DEVELOPER_ID_IDENTITY`: exact signing identity, beginning with `Developer ID Application:`.
 - `APPLE_TEAM_ID`: Apple development team identifier.
+- `SPARKLE_PRIVATE_KEY`: the base64-encoded 32-byte Ed25519 private seed exported by Sparkle `generate_keys`; do not confuse this with the Apple signing certificate.
 
 For notarization, configure **one** of these authentication methods:
 
@@ -29,10 +30,41 @@ With Apple Account authentication configured, manually run **Check release crede
 1. Update all application/extension `MARKETING_VERSION` values and increment build numbers in `project.yml`. Prepare bilingual notes under `docs/releases/<version>.md`.
 2. Run CI build/tests and the manual checks below. Have the user test and explicitly confirm changes before committing/pushing.
 3. Commit, push and tag that reviewed commit as `v<version>`. Push the tag.
-4. The workflow builds both architectures, signs the app, notarizes and staples it, packages/notarizes/staples the DMG, validates Gatekeeper and uploads the DMG and checksums to a **draft** GitHub Release.
-5. Download that exact candidate DMG from the draft, verify its checksum and install/open it on a clean test account. Publish the draft only after acceptance.
+4. The workflow archives both architectures and exports the app with Developer ID signing, including Sparkle installation helpers. It notarizes/staples the app and DMG, validates Gatekeeper, then generates and verifies the signed update feed from the final DMG. It uploads the DMG, feed and checksums to a **draft** GitHub Release.
+5. Download that exact candidate DMG and feed from the draft, verify their checksums and complete installation/upgrade acceptance on a clean test account. Publish the draft only after acceptance and explicitly mark it **Latest**. Never mark a preview or prerelease as Latest.
 
 If a job fails, fix the cause and rerun the workflow; it never substitutes an unnotarized installer. The script checks version/tag agreement and overwrites only assets of an existing draft, never a published release.
+
+## Application updates
+
+Sparkle **2.10.0** is pinned in `project.yml` for the Mac target only. The fixed HTTPS feed is:
+
+`https://github.com/Poseima/picelf-open/releases/latest/download/appcast.xml`
+
+Every stable release must include that asset. Its enclosure points to that release's exact versioned DMG, never a latest-DMG redirect. Drafts and prereleases are not offered by this stable feed. The first integration supports full DMG updates only. Signed feeds, verification before extraction, and user-confirmed installation are required. The native Sparkle dialogs follow system language; Picelf's settings and menus follow the selected app language.
+
+Generate a key once using the pinned tools in `.build/packages/artifacts/sparkle/Sparkle/bin`:
+
+```bash
+generate_keys --account com.picelf.open
+generate_keys --account com.picelf.open -p
+```
+
+Embed the printed **public** key as `SUPublicEDKey` in the Mac Info.plist. Export the private key with `generate_keys --account com.picelf.open -x <private-backup-path>` to a protected location outside the repository (directory mode 700, file mode 600). Back it up securely and set `SPARKLE_PRIVATE_KEY` in the GitHub `release` environment using stdin/file input; never print the private key, pass it as a command-line argument, or commit it. Do not regenerate keys per release. The release script verifies that the secret matches the candidate's public key. Key rotation requires a separately reviewed migration.
+
+Increment `CURRENT_PROJECT_VERSION` as a positive integer for every official build. The workflow rejects a version at or below any published stable version and a build number at or below the previous official app (inspected from its signed DMG, including legacy versions without Sparkle). Published assets must never be replaced. Recover from a defective release by issuing a higher version/build containing the correction or known-good code; automatic downgrades are not supported.
+
+Ordinary Debug builds and XCTest hosts never start the updater. For a **signed** Debug build, an explicitly enabled test run can use an independent HTTPS feed:
+
+```bash
+PICELF_RUN_LIVE_UPDATE_TESTS=1 PICELF_UPDATE_TEST_FEED_URL=https://your-test-host.example/appcast.xml /path/to/Picelf.app/Contents/MacOS/Picelf
+```
+
+This override is ignored by Release builds. The test feed and update archive must pass the same signing checks as production. Use a dedicated account/installation and an isolated test feed for two notarized candidates with increasing build numbers; never publish high test build numbers into the stable feed. Do not disable TLS, Gatekeeper, signing, or sandbox protections for testing.
+
+Upgrade acceptance must cover automatic/manual checks, skip/remind, offline/error/cancel paths, corrupted feed/archive rejection, read-only installation location, and preserved settings, history and permissions after replacement/relaunch. Test capture, recording, workbench jobs, live relay, editor/canvas windows and work starting during download: updating must not terminate unfinished work, and becoming idle must not resume installation without another click. Also verify minimized editor/canvas windows block installation.
+
+The updater card exposes a Release download link if in-app updating fails. A version that predates Sparkle needs one manual overwrite installation; subsequent versions update in-app. Automatic checks default to daily, automatic downloads/installation are disabled, and system profiling is disabled.
 
 ## Manual acceptance
 

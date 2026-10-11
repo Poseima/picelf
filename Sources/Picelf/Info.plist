@@ -2,6 +2,26 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>SUPublicEDKey</key>
+    <string>jhTpKqX9IVcZ1ojFYdwQrCxGfLBRuuSKuSgzd/TeGPo=</string>
+    <key>SUFeedURL</key>
+    <string>https://github.com/Poseima/picelf-open/releases/latest/download/appcast.xml</string>
+    <key>SUEnableInstallerLauncherService</key>
+    <true/>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUEnableSystemProfiling</key>
+    <false/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SURequireSignedFeed</key>
+    <true/>
     <key>CFBundleName</key>
     <string>Picelf</string>
     <key>CFBundleDisplayName</key>

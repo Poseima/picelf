@@ -145,9 +145,9 @@
 
 在 [Releases](https://github.com/Poseima/picelf-open/releases) 下载 `Picelf-<版本>-universal.dmg`，打开后将 **Picelf** 拖入 **Applications**。同一个安装包支持 Apple Silicon 和 Intel。
 
-> 首个正式 Release 尚未发布，安装包将在发布后提供。GitHub 的 Source code 压缩包是源码，不能直接安装。
+> 请下载 Release 中的 DMG 安装包。GitHub 的 Source code 压缩包是源码，不能直接安装。
 
-根据使用场景授予屏幕录制、辅助功能及可选麦克风权限。更新时退出应用后覆盖安装，设置与历史记录保留。详见[安装与权限说明](docs/installation.md)。
+根据使用场景授予屏幕录制、辅助功能及可选麦克风权限。正式版本可在设置或菜单中检查更新，安装前由你确认，设置与历史记录保留；没有更新器的旧版需先覆盖安装一次。详见[安装与权限说明](docs/installation.md)。
 
 <a id="build"></a>
 

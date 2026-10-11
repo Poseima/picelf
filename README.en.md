@@ -145,9 +145,9 @@ Pin captures beside your design, code or notes. Bind a pin to a window or displa
 
 Download `Picelf-<version>-universal.dmg` from [Releases](https://github.com/Poseima/picelf-open/releases), open it and drag **Picelf** into **Applications**. One installer supports Apple Silicon and Intel.
 
-> The first official Release has not been published yet; installers will become available when it is. GitHub Source code archives contain source, not an installable application.
+> Download the DMG installer from Releases. GitHub Source code archives contain source, not an installable application.
 
-Grant Screen Recording, Accessibility and optional Microphone permissions as needed. Update by quitting the app and replacing it with the latest download; settings and history remain. See [installation and permissions](docs/installation.md).
+Grant Screen Recording, Accessibility and optional Microphone permissions as needed. Official builds can check for updates from settings or the menus; you decide when to install, and settings and history remain. Older builds without the updater need one overwrite installation first. See [installation and permissions](docs/installation.md).
 
 <a id="build"></a>
 

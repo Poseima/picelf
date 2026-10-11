@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 final class CanvasWindowController {
     private var window: NSWindow?
+    var hasOpenWindow: Bool { window?.isVisible == true || window?.isMiniaturized == true }
     private var document: CanvasDocument?
     var workbenchStore: WorkbenchStore?
 

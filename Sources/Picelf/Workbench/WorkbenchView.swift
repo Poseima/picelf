@@ -168,48 +168,7 @@ struct WorkbenchView: View {
     }
 
     private var studioBackdrop: some View {
-        ZStack {
-            // 底层：系统磨砂玻璃
-            VisualEffectBlurView(
-                material: .hudWindow,
-                blendingMode: .behindWindow,
-                state: .active
-            )
-
-            // 叠加层：翡翠绿渐变（半透明，保留玻璃质感）
-            LinearGradient(
-                colors: [
-                    Color(red: 0.00, green: 0.42, blue: 0.30).opacity(0.35),  // 深翡翠 #006B4C
-                    Color(red: 0.00, green: 0.55, blue: 0.40).opacity(0.28),  // 中翡翠 #008C66
-                    Color(red: 0.00, green: 0.42, blue: 0.30).opacity(0.32),  // 深翡翠
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // 高光层：浅翡翠光晕
-            RadialGradient(
-                colors: [
-                    Color(red: 0.31, green: 0.78, blue: 0.47).opacity(0.15),  // 浅翡翠 #50C878
-                    .clear
-                ],
-                center: .topLeading,
-                startRadius: 60,
-                endRadius: 600
-            )
-
-            // 底部暗角：增加层次感
-            RadialGradient(
-                colors: [
-                    Color.black.opacity(0.25),
-                    .clear
-                ],
-                center: .bottom,
-                startRadius: 100,
-                endRadius: 800
-            )
-        }
-        .ignoresSafeArea()
+        StudioBackdrop()
     }
 
     private var studioHeader: some View {

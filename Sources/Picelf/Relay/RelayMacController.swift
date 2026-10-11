@@ -18,6 +18,7 @@ final class RelayMacController: NSObject, ObservableObject, NSWindowDelegate {
     private var pairingObservation: AnyCancellable?
     var workbenchStore: WorkbenchStore?
     private var editor: EditWindowController?
+    var hasOpenEditor: Bool { editor?.hasOpenWindow == true }
     private var liveEditors: [UUID: RelayMacLiveEditor] = [:]
     private var liveObservation: AnyCancellable?
     private var languageObservation: AnyCancellable?

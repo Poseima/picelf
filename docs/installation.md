@@ -26,8 +26,10 @@ Image translation needs macOS 15+ and may request language-pack downloads. Other
 
 ## 更新与卸载 / Update and uninstall
 
-退出应用，下载新 DMG，再覆盖 Applications 中的 Picelf。保留应用标识与签名团队的官方更新会继续使用现有设置和历史记录，无需重新导入。
+正式版本可在应用菜单、菜单栏右键菜单或「设置 → 通用 → 软件更新」中检查更新。默认每天自动检查一次，由你确认下载和安装，随后应用替换并重启。录屏、捕获、工作台任务或编辑尚未完成时，请先完成工作，再点击继续更新。
 
-Quit and replace the app to update. To uninstall, quit and move the app to Trash. Captures exported to your chosen folders remain yours. Application data is stored under the app's container/Application Support directory for `com.picelf.open.app`; delete it separately only if you want to remove history and settings.
+不含更新器的旧版需要先退出应用，下载新 DMG，覆盖 Applications 中的 Picelf 一次；无需提前删除旧 App。之后即可在应用内更新。更新失败时仍可通过 Release 下载页面覆盖安装。保留应用标识与签名团队的官方更新会继续使用现有设置和历史记录，无需重新导入。
+
+Use Check for Updates in the app menu, status menu, or Settings → General → Software updates. Official builds check daily; downloading and installing require your choice. Finish capture, recording, relay, pending tasks and editing before continuing installation. Legacy builds without an updater need one manual overwrite installation; you do not need to delete the old app first. Release downloads remain available if updating fails. To uninstall, quit and move the app to Trash. Captures exported to your chosen folders remain yours. Application data is stored under the app's container/Application Support directory for `com.picelf.open.app`; delete it separately only if you want to remove history and settings.
 
 自行构建的版本可能因签名变化需要重新授予权限。项目不提供关闭 Gatekeeper 或全局移除系统安全检查的安装步骤。

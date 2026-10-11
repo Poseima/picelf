@@ -26,6 +26,12 @@ OCR 使用系统 Vision；翻译使用系统 Translation，首次使用可能由
 
 Opening documentation/download links connects your browser to GitHub, subject to GitHub's privacy policy. Capture and editing do not require an application service account.
 
+## Software updates / 软件更新
+
+Official Mac releases check GitHub for updates once a day by default. You can disable automatic checks in Settings → General and check manually instead. Checks retrieve the signed update feed; installing an update downloads the selected release package. GitHub and its download infrastructure receive ordinary connection information such as your IP address and the updater's application/OS user-agent. Sparkle system profiling is disabled. Screenshots, recordings, OCR text and editing documents are not sent with update checks. Downloading and installing require your choice.
+
+Mac 正式版本默认每天连接 GitHub 检查更新，可在「设置 → 通用」关闭自动检查或手动检查。检查时获取签名更新清单，安装时下载对应版本；GitHub 及其下载服务会接收 IP 地址和更新器的应用/系统 User-Agent 等常规连接信息。Sparkle 系统统计已关闭，检查更新不会上传截图、录屏、OCR 文本或编辑内容。下载和安装由你决定。
+
 ## Permissions / 权限
 
 Screen Recording is used during capture/recording you initiate. Accessibility supports scrolling and window interactions. Microphone is optional and used only if enabled for recording. iOS photo access is requested for import/export; Local Network is used for device pairing and relay.

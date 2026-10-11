@@ -3,6 +3,7 @@
 from pathlib import Path
 import plistlib
 import re
+import base64
 
 root = Path(__file__).resolve().parents[2]
 errors = []
@@ -33,7 +34,29 @@ for name in ("Sources/PicelfIOS/Capture/BroadcastFrameRelay.swift", "Sources/Pic
         errors.append(f"App Group code and entitlement disagree: {name}")
 if '"com.picelf.open.ios.broadcast-upload"' not in (root / "Sources/PicelfIOS/Views/BroadcastPickerView.swift").read_text():
     errors.append("Broadcast picker does not match the extension")
-for name in ("LICENSE", "licenses/KeyboardShortcuts.txt", "licenses/SnapshotTesting.txt"):
+mac_info = plistlib.loads((root / "Sources/Picelf/Info.plist").read_bytes())
+if mac_info.get("SUFeedURL") != "https://github.com/Poseima/picelf-open/releases/latest/download/appcast.xml":
+    errors.append("Unexpected stable update feed")
+try:
+    assert len(base64.b64decode(mac_info.get("SUPublicEDKey", ""), validate=True)) == 32
+except (ValueError, AssertionError):
+    errors.append("Missing valid Sparkle public signing key")
+for key in ("SURequireSignedFeed", "SUVerifyUpdateBeforeExtraction", "SUEnableInstallerLauncherService", "SUEnableAutomaticChecks"):
+    if mac_info.get(key) is not True:
+        errors.append(f"Missing updater setting: {key}")
+for key in ("SUAutomaticallyUpdate", "SUAllowsAutomaticUpdates", "SUEnableSystemProfiling"):
+    if mac_info.get(key) is not False:
+        errors.append(f"Unexpected silent installation or system profiling: {key}")
+if mac_info.get("SUScheduledCheckInterval") != 86400:
+    errors.append("Updates must be checked daily")
+mac_entitlements = plistlib.loads((root / "Sources/Picelf/Picelf.entitlements").read_bytes())
+if mac_entitlements.get("com.apple.security.temporary-exception.mach-lookup.global-name") != [
+    "$(PRODUCT_BUNDLE_IDENTIFIER)-spks", "$(PRODUCT_BUNDLE_IDENTIFIER)-spki"
+]:
+    errors.append("Missing sandboxed Sparkle installer service access")
+if '  Sparkle:\n    url: https://github.com/sparkle-project/Sparkle\n    exactVersion: "2.10.0"' not in project:
+    errors.append("Sparkle must remain pinned to the reviewed version")
+for name in ("LICENSE", "licenses/KeyboardShortcuts.txt", "licenses/SnapshotTesting.txt", "licenses/Sparkle.txt"):
     path = root / name
     if not path.is_file() or "Permission is hereby granted" not in path.read_text():
         errors.append(f"Missing license notice: {name}")

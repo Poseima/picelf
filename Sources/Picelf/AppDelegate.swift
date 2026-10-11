@@ -29,6 +29,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         log.info("App launched — applicationDidFinishLaunching")
+        if ProcessInfo.processInfo.arguments.contains("--uitest-open-preferences"),
+           let suite = ProcessInfo.processInfo.environment["PICELF_UI_TEST_PREFERENCES_SUITE"],
+           let defaults = UserDefaults(suiteName: suite) {
+            defaults.removePersistentDomain(forName: suite)
+            AppPreferences.shared = AppPreferences(defaults: defaults)
+            AppPreferences.shared.appLanguage = AppLanguageOption.en.rawValue
+            if ProcessInfo.processInfo.environment["PICELF_UI_TEST_PREFERENCES_FIXTURES"] == "1" {
+                AppPreferences.shared.defaultFormat = .jpeg
+                AppPreferences.shared.savePath = "/Users/example/Documents/Research/A very long folder name for exported captures/Images"
+                AppPreferences.shared.presets = (1...20).map {
+                    RegionPreset(name: "Research capture region \($0)", width: 1920, height: 1080)
+                }
+            }
+        }
         NSApp.setActivationPolicy(.regular)
         setupMenuBar()
         migrateCaptureShortcutIfNeeded()
@@ -101,15 +115,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.raisePinLevels()
         }
 
-        KeyboardShortcuts.onKeyUp(for: .startCapture) { [weak self] in
-            log.info("[USER] Global hotkey pressed — starting capture")
-            self?.startCapture()
-        }
-
         NSApp.servicesProvider = RelayMacController.shared
         NSUpdateDynamicServices()
-        KeyboardShortcuts.onKeyUp(for: .sendToIPad) {
-            RelayMacController.shared.sendClipboard()
+        // Deterministic test hosts must not react to desktop hotkeys. Signed
+        // live tests can explicitly opt in to the normal shortcut callbacks.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+            || ProcessInfo.processInfo.environment["PICELF_RUN_LIVE_TESTS"] == "1" {
+            KeyboardShortcuts.onKeyUp(for: .startCapture) { [weak self] in
+                log.info("[USER] Global hotkey pressed — starting capture")
+                self?.startCapture()
+            }
+            KeyboardShortcuts.onKeyUp(for: .sendToIPad) {
+                RelayMacController.shared.sendClipboard()
+            }
         }
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
            UserDefaults.standard.string(forKey: "relay.lastPeerName") != nil {
@@ -134,12 +152,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         bindingMonitor.reconfigure(panels: pinnedPanels)
 
+        UpdateController.shared.onInstallationDeferred = { [weak self] in
+            self?.preferencesWindowController?.show(tab: .general)
+        }
+        UpdateController.shared.start { [weak self] in
+            self?.updateActivity ?? UpdateActivity()
+        }
+
+        if ProcessInfo.processInfo.arguments.contains("--uitest-open-preferences") {
+            preferencesWindowController?.show()
+        }
         if ProcessInfo.processInfo.arguments.contains("--uitest-open-editor") {
             showEditWindow(image: makeUITestImage())
         }
         if ProcessInfo.processInfo.arguments.contains("--uitest-open-canvas") {
             showCanvas(images: [makeUITestImage()])
         }
+    }
+
+    private var updateActivity: UpdateActivity {
+        let capture = orchestrator?.captureState
+        let recording = orchestrator?.recordingOrchestrator
+        let relay = RelayMacController.shared.hub
+        return UpdateActivity(
+            capture: capture?.isCapturing == true || capture?.isStitching == true ||
+                capture?.isSnapEditing == true || orchestrator?.framePanel?.isVisible == true,
+            recording: recording?.showingConfig == true || recording?.isPreparingRecording == true ||
+                recording?.isRecording == true,
+            jobs: (workbenchStore?.runningCount ?? 0) + (workbenchStore?.queuedCount ?? 0) > 0,
+            relay: relay.collaboration.activeID != nil || relay.tasks.contains {
+                $0.state == .editing || $0.state == .returning
+            },
+            editor: editWindowController?.hasOpenWindow == true || RelayMacController.shared.hasOpenEditor,
+            canvas: canvasWindowController?.hasOpenWindow == true
+        )
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        UpdateController.shared.shouldAllowTermination() ? .terminateNow : .terminateCancel
     }
 
     private func migrateCaptureShortcutIfNeeded() {
@@ -308,6 +358,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         prefsItem.target = self
         menu.addItem(prefsItem)
 
+        menu.addItem(UpdateController.shared.makeMenuItem())
+
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: L10n.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem?.menu = menu
@@ -318,7 +370,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openRelay() { RelayMacController.shared.show() }
     @objc private func sendClipboardToIPad() { RelayMacController.shared.sendClipboard() }
 
-    @objc private func openPreferences() {
+    @objc func openPreferences() {
         preferencesWindowController?.show()
     }
 

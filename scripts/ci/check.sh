@@ -9,7 +9,8 @@ case "$mode" in
   mac-build)
     xcodebuild build "${common[@]}" -scheme Picelf -configuration Debug -destination 'platform=macOS' -derivedDataPath .build/mac ;;
   mac-test)
-    xcodebuild test "${common[@]}" -scheme Picelf -destination 'platform=macOS' -derivedDataPath .build/mac -only-testing:PicelfTests -parallel-testing-enabled NO ;;
+    xcodebuild test "${common[@]}" -scheme Picelf -destination 'platform=macOS' -derivedDataPath .build/mac -only-testing:PicelfTests -parallel-testing-enabled NO
+    python3 -m unittest discover -s Tests/ReleaseTests -v ;;
   ios-build)
     xcodebuild build "${common[@]}" -scheme PicelfIOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/ios ;;
   ios-test)

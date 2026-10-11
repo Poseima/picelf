@@ -3,6 +3,7 @@ import SwiftUI
 
 class EditWindowController {
     private var window: NSWindow?
+    var hasOpenWindow: Bool { window?.isVisible == true || window?.isMiniaturized == true }
     var onPinImage: ((NSImage) -> Void)?
     var workbenchStore: WorkbenchStore?
 

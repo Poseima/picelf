@@ -16,7 +16,7 @@ final class PreferencesTests: XCTestCase {
     }
 
     @MainActor
-    func test_settingsWindowResizesWithoutMovingItsTopEdge() throws {
+    func test_settingsNavigationPreservesWindowFrameAndUserResize() throws {
         let existingWindows = Set(NSApplication.shared.windows.map(\.windowNumber))
         let controller = PreferencesWindowController()
         controller.show(tab: .general)
@@ -24,18 +24,40 @@ final class PreferencesTests: XCTestCase {
             !existingWindows.contains($0.windowNumber)
         })
         defer { window.orderOut(nil) }
-        let top = window.frame.maxY
-        XCTAssertEqual(window.contentRect(forFrameRect: window.frame).width, 760, accuracy: 1)
-        for tab in [PreferencesTab.capture, .translation, .shortcuts, .general] {
+        XCTAssertEqual(window.contentRect(forFrameRect: window.frame).width, 900, accuracy: 1)
+        XCTAssertEqual(window.contentMinSize, PreferencesWindowAppearance.minimumSize)
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+
+        let initialFrame = window.frame
+        for tab in PreferencesTab.allCases + PreferencesTab.allCases.reversed() {
             controller.show(tab: tab)
-            XCTAssertEqual(window.frame.maxY, top, accuracy: 1)
-            XCTAssertEqual(window.contentRect(forFrameRect: window.frame).width, 760, accuracy: 1)
-            XCTAssertGreaterThan(window.contentRect(forFrameRect: window.frame).height, 300)
+            XCTAssertEqual(window.frame, initialFrame)
         }
-        window.orderOut(nil)
+
+        window.setContentSize(NSSize(width: 980, height: 700))
+        let resizedFrame = window.frame
+        controller.show(tab: .translation)
+        XCTAssertEqual(window.frame, resizedFrame)
+        window.performClose(nil)
+        XCTAssertFalse(window.isVisible)
         controller.show()
         XCTAssertTrue(window.isVisible)
-        XCTAssertEqual(window.frame.maxY, top, accuracy: 1)
+        XCTAssertEqual(window.frame, resizedFrame)
+    }
+
+    @MainActor
+    func test_settingsSceneAppearanceDoesNotResizeOnUpdates() {
+        let window = NSWindow(contentRect: NSRect(x: 40, y: 80, width: 960, height: 680),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.orderOut(nil) }
+        PreferencesWindowAppearance.apply(to: window)
+        let configuredFrame = window.frame
+        PreferencesWindowAppearance.apply(to: window)
+        XCTAssertEqual(window.frame, configuredFrame)
+        XCTAssertEqual(window.contentMinSize, PreferencesWindowAppearance.minimumSize)
+        XCTAssertTrue(window.styleMask.contains(.resizable))
+        XCTAssertEqual(window.appearance?.name, .darkAqua)
     }
 
     func test_defaultValues() {
