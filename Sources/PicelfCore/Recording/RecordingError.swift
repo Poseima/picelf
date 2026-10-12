@@ -8,9 +8,18 @@ enum RecordingError: Error, LocalizedError {
     case durationLimitReached
     case microphoneAccessDenied
     case streamStopped(Error)
+    case displayConfigurationChanged
+    case invalidCaptureRegion
+    case unsupportedVideoSize
 
     var errorDescription: String? {
         switch self {
+        case .displayConfigurationChanged:
+            return L10n.recordingDisplayChangedStart
+        case .invalidCaptureRegion:
+            return L10n.recordingInvalidRegion
+        case .unsupportedVideoSize:
+            return L10n.recordingUnsupportedSize
         case .writerCreationFailed(let reason):
             return "Failed to create video writer: \(reason)"
         case .finalizationFailed(let reason):

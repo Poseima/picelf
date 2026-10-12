@@ -51,6 +51,7 @@ private enum RecordingStartFailure: Error {
     case displayNotFound(displayID: CGDirectDisplayID?)
     case invalidCaptureArea
     case captureRegionUnavailable
+    case displayConfigurationChanged
 }
 
 enum RecordingTargetDescriptor: Equatable {
@@ -58,42 +59,13 @@ enum RecordingTargetDescriptor: Equatable {
     case display(displayID: CGDirectDisplayID, effectiveFrameRect: CGRect)
 }
 
-private enum PreparedRecordingTarget {
-    case window(windowID: CGWindowID, scDisplay: SCDisplay, requestedSourceRect: CGRect, effectiveFrameRect: CGRect)
-    case display(displayID: CGDirectDisplayID, scDisplay: SCDisplay, requestedSourceRect: CGRect, effectiveFrameRect: CGRect)
-
-    var effectiveFrameRect: CGRect {
-        switch self {
-        case .window(_, _, _, let effectiveFrameRect), .display(_, _, _, let effectiveFrameRect):
-            return effectiveFrameRect
-        }
-    }
-
-    var selectedWindowID: CGWindowID? {
-        switch self {
-        case .window(let windowID, _, _, _):
-            return windowID
-        case .display:
-            return nil
-        }
-    }
-
-    var screenRecorderTarget: ScreenRecorder.CaptureTarget {
-        switch self {
-        case .window(_, let scDisplay, let requestedSourceRect, _):
-            return .display(scDisplay, requestedSourceRect: requestedSourceRect)
-        case .display(_, let scDisplay, let requestedSourceRect, _):
-            return .display(scDisplay, requestedSourceRect: requestedSourceRect)
-        }
-    }
+private struct PreparedRecordingTarget {
+    let selectedWindowID: CGWindowID?
+    let effectiveFrameRect: CGRect
+    let screenRecorderTarget: RecordingSelection
 
     var logDescription: String {
-        switch self {
-        case .window(let windowID, let scDisplay, _, _):
-            return "windowID=\(windowID) via displayID=\(scDisplay.displayID)"
-        case .display(let displayID, _, _, _):
-            return "displayID=\(displayID)"
-        }
+        "windowID=\(selectedWindowID.map(String.init) ?? "none") via displayID=\(screenRecorderTarget.display.displayID)"
     }
 }
 
@@ -529,6 +501,10 @@ class CaptureOrchestrator: ObservableObject {
             self?.deactivate()
         }
 
+        recordingOrchestrator.onRecordingNotice = { [weak self] notice in
+            self?.showCaptureAlert(message: L10n.recordingStopped, detail: notice)
+        }
+
         // Wire recording completion
         recordingOrchestrator.onRecordingComplete = { [weak self] videoURL, duration in
             guard let self else { return }
@@ -873,6 +849,8 @@ class CaptureOrchestrator: ObservableObject {
 
     private func showRecordingStartFailureAlert(_ failure: RecordingStartFailure) {
         switch failure {
+        case .displayConfigurationChanged:
+            showCaptureAlert(message: L10n.recordingStartFailed, detail: L10n.recordingDisplayChangedStart)
         case .noCaptureTarget:
             showCaptureAlert(
                 message: L10n.recordingStartFailed,
@@ -956,12 +934,19 @@ class CaptureOrchestrator: ObservableObject {
         }
 
         let center = CGPoint(x: captureState.frameRect.midX, y: captureState.frameRect.midY)
-        let screen = activeScreen ?? screenContaining(center) ?? NSScreen.main
-        let activeDisplayID = screen.flatMap(Self.displayID(for:))
+        let screen = activeScreen ?? NSScreen.screens.first(where: { $0.frame.contains(center) })
+        guard let screen, let selectedDisplayID = Self.displayID(for: screen),
+              NSScreen.screens.contains(where: { Self.displayID(for: $0) == selectedDisplayID }) else {
+            return .failure(.displayConfigurationChanged)
+        }
+        let activeDisplayID = Self.displayID(for: screen)
+        let initialScreenFrame = screen.frame
+        let initialPrimaryFrame = NSScreen.screens.first?.frame
+        let initialPrimaryID = CGMainDisplayID()
 
         var descriptor = Self.resolveRecordingTargetDescriptor(
             frameRect: captureState.frameRect,
-            activeScreenFrame: screen?.frame,
+            activeScreenFrame: screen.frame,
             activeDisplayID: activeDisplayID,
             windows: windowEnumerator.windows,
             orderedFrontToBackBy: activeScreenFrontToBackWindowIDs
@@ -970,7 +955,7 @@ class CaptureOrchestrator: ObservableObject {
             await windowEnumerator.refreshAvailableContent()
             descriptor = Self.resolveRecordingTargetDescriptor(
                 frameRect: captureState.frameRect,
-                activeScreenFrame: screen?.frame,
+                activeScreenFrame: screen.frame,
                 activeDisplayID: activeDisplayID,
                 windows: windowEnumerator.windows,
                 orderedFrontToBackBy: activeScreenFrontToBackWindowIDs
@@ -980,57 +965,47 @@ class CaptureOrchestrator: ObservableObject {
             return .failure(.noCaptureTarget)
         }
 
+        let windowID: CGWindowID?
+        let displayID: CGDirectDisplayID
+        let effectiveFrame: CGRect
         switch descriptor {
-        case .window(let windowID, let effectiveFrameRect):
-            guard let displayID = activeDisplayID else {
+        case .window(let id, let frame):
+            guard let idForDisplay = activeDisplayID else {
                 return .failure(.displayNotFound(displayID: nil))
             }
-            var scDisplay = await windowEnumerator.scDisplay(for: displayID)
-            if scDisplay == nil {
-                await windowEnumerator.refreshAvailableContent()
-                scDisplay = await windowEnumerator.scDisplay(for: displayID)
-            }
-            guard let scDisplay else {
-                return .failure(.displayNotFound(displayID: displayID))
-            }
+            windowID = id
+            displayID = idForDisplay
+            effectiveFrame = frame
+        case .display(let id, let frame):
+            windowID = nil
+            displayID = id
+            effectiveFrame = frame
+        }
 
-            let selectedFrame = WindowInfo.appKitToCG(effectiveFrameRect)
-            let clampedFrame = selectedFrame.intersection(scDisplay.frame)
-            guard !clampedFrame.isNull, !clampedFrame.isEmpty, clampedFrame.width > 0, clampedFrame.height > 0 else {
-                return .failure(.invalidCaptureArea)
+        do {
+            let context = try await RecordingDisplayContext.resolve(displayID: displayID)
+            guard context.snapshot.appKitFrame == initialScreenFrame,
+                  context.snapshot.primaryFrame == initialPrimaryFrame,
+                  context.snapshot.primaryDisplayID == initialPrimaryID else {
+                return .failure(.displayConfigurationChanged)
             }
-
-            return .success(
-                .window(
-                    windowID: windowID,
-                    scDisplay: scDisplay,
-                    requestedSourceRect: clampedFrame,
-                    effectiveFrameRect: WindowInfo.cgToAppKit(clampedFrame)
-                )
+            let desktopRect = ScreenCoordinateSpace.appKitRectToCG(
+                effectiveFrame, primaryScreenMaxY: context.snapshot.primaryFrame.maxY
             )
-        case .display(let displayID, let effectiveFrameRect):
-            var scDisplay = await windowEnumerator.scDisplay(for: displayID)
-            if scDisplay == nil {
-                scDisplay = await windowEnumerator.scDisplay(for: displayID)
-            }
-            guard let scDisplay else {
-                return .failure(.displayNotFound(displayID: displayID))
-            }
-
-            let selectedFrame = WindowInfo.appKitToCG(effectiveFrameRect)
-            let clampedFrame = selectedFrame.intersection(scDisplay.frame)
-            guard !clampedFrame.isNull, !clampedFrame.isEmpty, clampedFrame.width > 0, clampedFrame.height > 0 else {
-                return .failure(.invalidCaptureArea)
-            }
-
-            return .success(
-                .display(
-                    displayID: displayID,
-                    scDisplay: scDisplay,
-                    requestedSourceRect: clampedFrame,
-                    effectiveFrameRect: WindowInfo.cgToAppKit(clampedFrame)
-                )
+            let selection = try RecordingSelection(
+                display: context.snapshot,
+                desktopRegion: DesktopRecordingRect(rect: desktopRect)
             )
+            return .success(PreparedRecordingTarget(
+                selectedWindowID: windowID,
+                effectiveFrameRect: ScreenCoordinateSpace.cgRectToAppKit(
+                    selection.desktopRegion.rect, primaryScreenMaxY: context.snapshot.primaryFrame.maxY
+                ),
+                screenRecorderTarget: selection
+            ))
+        } catch {
+            log.warning("Recording target preparation failed: \(error.localizedDescription)")
+            return .failure(.displayConfigurationChanged)
         }
     }
 

@@ -1,31 +1,31 @@
 import AppKit
 
 enum ScreenCoordinateSpace {
-    /// AppKit global space uses a virtual desktop coordinate system (y-up),
-    /// while CG screen space uses y-down. We flip around the virtual desktop's maxY.
-    static func desktopMaxY() -> CGFloat {
-        NSScreen.screens.map(\.frame.maxY).max() ?? 0
+    /// Both global coordinate systems are anchored to the primary display.
+    /// NSScreen.main follows keyboard focus and is not necessarily that display.
+    static func primaryScreenMaxY() -> CGFloat {
+        NSScreen.screens.first?.frame.maxY ?? 0
     }
 
-    static func cgRectToAppKit(_ rect: CGRect, desktopMaxY: CGFloat = desktopMaxY()) -> CGRect {
+    static func cgRectToAppKit(_ rect: CGRect, primaryScreenMaxY: CGFloat = primaryScreenMaxY()) -> CGRect {
         CGRect(
             x: rect.origin.x,
-            y: desktopMaxY - rect.maxY,
+            y: primaryScreenMaxY - rect.maxY,
             width: rect.width,
             height: rect.height
         )
     }
 
-    static func appKitRectToCG(_ rect: CGRect, desktopMaxY: CGFloat = desktopMaxY()) -> CGRect {
+    static func appKitRectToCG(_ rect: CGRect, primaryScreenMaxY: CGFloat = primaryScreenMaxY()) -> CGRect {
         CGRect(
             x: rect.origin.x,
-            y: desktopMaxY - rect.maxY,
+            y: primaryScreenMaxY - rect.maxY,
             width: rect.width,
             height: rect.height
         )
     }
 
-    static func appKitPointToCG(_ point: CGPoint, desktopMaxY: CGFloat = desktopMaxY()) -> CGPoint {
-        CGPoint(x: point.x, y: desktopMaxY - point.y)
+    static func appKitPointToCG(_ point: CGPoint, primaryScreenMaxY: CGFloat = primaryScreenMaxY()) -> CGPoint {
+        CGPoint(x: point.x, y: primaryScreenMaxY - point.y)
     }
 }

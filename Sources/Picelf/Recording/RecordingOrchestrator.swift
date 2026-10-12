@@ -387,6 +387,8 @@ final class RecordingOrchestrator: ObservableObject {
     @Published private(set) var countdownValue: Int?
 
     private var hasSubmitted = false
+    private var isStopping = false
+    private var startToken = UUID()
     private var configPanel: RecordingConfigPanel?
     private var toolbarPanel: RecordingToolbarPanel?
     private var countdownPanel: NSPanel?
@@ -394,13 +396,19 @@ final class RecordingOrchestrator: ObservableObject {
     private var countdownTask: Task<Void, Never>?
     private var elapsedObservation: AnyCancellable?
     private var pendingRecordingTarget = PendingRecordingTarget<ScreenRecorder.CaptureTarget>()
-    private var activeScreen: NSScreen?
+    private var activeDisplayID: CGDirectDisplayID?
+    private var activeScreen: NSScreen? {
+        NSScreen.screens.first {
+            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == activeDisplayID
+        }
+    }
     private var configPanelLevel: NSWindow.Level = .floating
     private var toolbarPanelLevel: NSWindow.Level = .floating + 1
     private var countdownPanelLevel: NSWindow.Level = .floating + 2
     private let microphonePermissionCoordinator: RecordingMicrophonePermissionCoordinator
     private let microphonePermissionAlertPresenter: MicrophonePermissionAlertPresenter
 
+    var onRecordingNotice: ((String) -> Void)?
     var onRecordingStarted: (() -> Void)?
     var onRecordingComplete: ((_ videoURL: URL, _ duration: TimeInterval) -> Void)?
     var onRecordingFailed: ((RecordingFailureContext) -> Void)?
@@ -429,7 +437,7 @@ final class RecordingOrchestrator: ObservableObject {
         guard !isRecording else { return }
         hideConfigPanel()
         pendingRecordingTarget.stage(target)
-        activeScreen = screen
+        activeDisplayID = target.display.displayID
         microphonePermissionCoordinator.sanitizePreferences(AppPreferences.shared)
 
         let panel = RecordingConfigPanel()
@@ -479,8 +487,11 @@ final class RecordingOrchestrator: ObservableObject {
     // MARK: - Recording lifecycle
 
     func startRecording() async {
+        guard !isPreparingRecording, !isRecording, !isStopping else { return }
+        let token = UUID()
+        startToken = token
         isPreparingRecording = true
-        defer { isPreparingRecording = false }
+        defer { if startToken == token { isPreparingRecording = false } }
 
         guard pendingRecordingTarget.hasValue else {
             log.error("Start recording requested without target")
@@ -493,6 +504,7 @@ final class RecordingOrchestrator: ObservableObject {
             return
         }
 
+        guard startToken == token else { return }
         guard let target = pendingRecordingTarget.consumeForStart() else {
             log.error("Recording target disappeared before start")
             notifyFailure(phase: .start, error: RecordingOrchestratorError.missingTarget)
@@ -516,8 +528,9 @@ final class RecordingOrchestrator: ObservableObject {
             if wasCancelled { return }
         }
 
-        guard let screen = activeScreen ?? NSScreen.main else {
-            notifyFailure(phase: .start, error: RecordingOrchestratorError.missingTarget)
+        guard startToken == token else { return }
+        guard let screen = activeScreen else {
+            notifyFailure(phase: .start, error: RecordingError.displayConfigurationChanged)
             return
         }
         let config = RecordingConfiguration(
@@ -529,7 +542,7 @@ final class RecordingOrchestrator: ObservableObject {
             showsCursor: prefs.recordingShowsCursor,
             durationLimitSeconds: prefs.recordingDurationLimit,
             countdownSeconds: countdown,
-            scaleFactor: Int(screen.backingScaleFactor)
+            scaleFactor: 1
         )
 
         let recorder = ScreenRecorder(configuration: config)
@@ -537,22 +550,19 @@ final class RecordingOrchestrator: ObservableObject {
         elapsedObservation = nil
         screenRecorder = recorder
 
-        // Wire unexpected stop
-        recorder.onUnexpectedStop = { [weak self] url, elapsed, error in
-            guard let self, !self.hasSubmitted else { return }
-            log.warning("Unexpected stop: \(error.localizedDescription)")
-            self.hasSubmitted = true
-            self.isRecording = false
-            self.isPaused = false
-            self.dismissToolbar()
-            self.elapsedObservation?.cancel()
-            self.elapsedObservation = nil
-            self.screenRecorder = nil
-            self.onRecordingComplete?(url, elapsed)
+        hasSubmitted = false
+        isStopping = false
+        recorder.onAutomaticStop = { [weak self, weak recorder] result, reason in
+            guard let self, let recorder, self.screenRecorder === recorder else { return }
+            self.completeRecording(result, reason: reason)
         }
 
         do {
             try await recorder.startRecording(target: target)
+            guard startToken == token, screenRecorder === recorder else {
+                _ = try? await recorder.stopRecording()
+                return
+            }
             isRecording = true
             isPaused = false
             hasSubmitted = false
@@ -567,57 +577,62 @@ final class RecordingOrchestrator: ObservableObject {
             log.info("Recording started")
         } catch {
             log.error("Failed to start recording: \(error.localizedDescription)")
+            guard startToken == token else { return }
             screenRecorder = nil
             notifyFailure(phase: .start, error: error)
         }
     }
 
     func pauseRecording() {
-        guard isRecording, !isPaused else { return }
+        guard isRecording, !isStopping, !isPaused else { return }
         screenRecorder?.pauseRecording()
         isPaused = true
         log.info("Paused")
     }
 
     func resumeRecording() {
-        guard isRecording, isPaused else { return }
+        guard isRecording, !isStopping, isPaused else { return }
         screenRecorder?.resumeRecording()
         isPaused = false
         log.info("Resumed")
     }
 
     func stopRecording() {
-        guard isRecording, !hasSubmitted else { return }
-        guard let recorder = screenRecorder else { return }
+        guard isRecording, !hasSubmitted, !isStopping, let recorder = screenRecorder else { return }
+        isStopping = true
         Task {
-            do {
-                let (url, duration) = try await recorder.stopRecording()
-                hasSubmitted = true
-                isRecording = false
-                isPaused = false
-                dismissToolbar()
-                elapsedObservation?.cancel()
-                elapsedObservation = nil
-                screenRecorder = nil
-                onRecordingComplete?(url, duration)
-                log.notice("Recording complete: \(String(format: "%.1f", duration))s")
-            } catch {
-                log.error("Stop failed: \(error.localizedDescription)")
-                isRecording = false
-                isPaused = false
-                hasSubmitted = true
-                dismissToolbar()
-                elapsedObservation?.cancel()
-                elapsedObservation = nil
-                screenRecorder = nil
-                notifyFailure(phase: .stop, error: error)
-            }
+            let result: Result<RecordingResult, Error>
+            do { result = .success(try await recorder.stopRecording()) }
+            catch { result = .failure(error) }
+            guard screenRecorder === recorder else { return }
+            completeRecording(result, reason: .user)
+        }
+    }
+
+    private func completeRecording(_ result: Result<RecordingResult, Error>, reason: RecordingStopReason) {
+        guard !hasSubmitted else { return }
+        hasSubmitted = true
+        isRecording = false
+        isPaused = false
+        isStopping = false
+        dismissToolbar()
+        elapsedObservation?.cancel()
+        elapsedObservation = nil
+        screenRecorder = nil
+        switch result {
+        case .success(let saved):
+            onRecordingComplete?(saved.url, saved.duration)
+            if let notice = reason.notice { onRecordingNotice?(notice) }
+        case .failure(let error):
+            log.error("Stop failed: \(error.localizedDescription)")
+            notifyFailure(phase: .stop, error: error)
         }
     }
 
     // MARK: - Cleanup
 
     func cleanup() {
+        startToken = UUID()
         // If recording, save it (Escape = save, not discard)
         if isRecording && !hasSubmitted {
             stopRecording()
@@ -633,14 +648,14 @@ final class RecordingOrchestrator: ObservableObject {
         isPreparingRecording = false
         elapsedObservation?.cancel()
         elapsedObservation = nil
-        screenRecorder = nil
+        if !isRecording && !isStopping { screenRecorder = nil }
         pendingRecordingTarget.clear()
     }
 
     // MARK: - Countdown
 
     private func runCountdown(seconds: Int) async {
-        guard let screen = activeScreen ?? NSScreen.main else { return }
+        guard let screen = activeScreen else { return }
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 200),

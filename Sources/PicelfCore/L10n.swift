@@ -420,6 +420,12 @@ enum L10n {
     static var phaseFinalizingVideo: String { zh ? "视频处理中" : "Finalizing video" }
     static var recordingStartFailed: String { zh ? "无法开始录制" : "Unable to Start Recording" }
     static var recordingSaveFailed: String { zh ? "无法保存录屏" : "Unable to Save Recording" }
+    static var recordingStopped: String { localized("录制已停止", "Recording Stopped") }
+    static var recordingDisplayChangedStart: String { localized("显示器配置已变化，请重新选择录制区域。", "The display configuration changed. Please select the recording area again.") }
+    static var recordingDisplayChangedSaved: String { localized("显示器已断开或显示配置发生变化。已录制的视频已保存到工作台，请重新选择区域后继续录制。", "The display disconnected or its configuration changed. The recorded video was saved to the Workbench. Select an area again to continue recording.") }
+    static var recordingInterruptedSaved: String { localized("录制意外中断。已录制的视频已保存到工作台。", "Recording was interrupted. The recorded video was saved to the Workbench.") }
+    static var recordingInvalidRegion: String { localized("录制区域无效或过小，请重新选择。", "The recording area is invalid or too small. Please select it again.") }
+    static var recordingUnsupportedSize: String { localized("无法编码此尺寸的视频，请尝试 1080p 或 720p 后重新录制。", "This video size cannot be encoded. Try recording at 1080p or 720p.") }
     static var microphoneDisabledForThisRecording: String {
         zh ? "此次录制将不使用麦克风" : "Microphone Disabled for This Recording"
     }

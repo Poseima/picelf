@@ -142,7 +142,7 @@ final class WindowCaptureStreamTests: XCTestCase {
         XCTAssertEqual(
             geometry,
             ScreenRecorder.ResolvedRecordingGeometry(
-                sourceRect: CGRect(x: 105, y: 207, width: 80, height: 40),
+                sourceRect: CGRect(x: 5, y: 7, width: 80, height: 40),
                 outputWidth: 80,
                 outputHeight: 40
             )
@@ -160,7 +160,7 @@ final class WindowCaptureStreamTests: XCTestCase {
         XCTAssertEqual(
             geometry,
             ScreenRecorder.ResolvedRecordingGeometry(
-                sourceRect: CGRect(x: 210, y: 312, width: 101, height: 51),
+                sourceRect: CGRect(x: 10, y: 12, width: 101, height: 51),
                 outputWidth: 202,
                 outputHeight: 102
             )
@@ -178,14 +178,14 @@ final class WindowCaptureStreamTests: XCTestCase {
         XCTAssertEqual(
             geometry,
             ScreenRecorder.ResolvedRecordingGeometry(
-                sourceRect: CGRect(x: -1728, y: 100, width: 3000, height: 2000),
+                sourceRect: CGRect(x: 0, y: 0, width: 3000, height: 2000),
                 outputWidth: 1920,
                 outputHeight: 1280
             )
         )
     }
 
-    func test_recordingGeometry_negativeDisplayRegionPreservesDisplayCoordinates() {
+    func test_recordingGeometry_negativeDisplayRegionUsesLocalCoordinates() {
         let geometry = ScreenRecorder.resolveGeometry(
             contentRect: CGRect(x: -1728, y: 0, width: 1728, height: 1117),
             requestedSourceRect: CGRect(x: -1400, y: 90, width: 600, height: 500),
@@ -196,7 +196,7 @@ final class WindowCaptureStreamTests: XCTestCase {
         XCTAssertEqual(
             geometry,
             ScreenRecorder.ResolvedRecordingGeometry(
-                sourceRect: CGRect(x: -1400, y: 90, width: 600, height: 500),
+                sourceRect: CGRect(x: 328, y: 90, width: 600, height: 500),
                 outputWidth: 1200,
                 outputHeight: 1000
             )
@@ -232,7 +232,7 @@ final class WindowCaptureStreamTests: XCTestCase {
         XCTAssertEqual(
             geometry,
             ScreenRecorder.ResolvedRecordingGeometry(
-                sourceRect: CGRect(x: 50, y: 70, width: 100, height: 50),
+                sourceRect: CGRect(x: 0, y: 0, width: 100, height: 50),
                 outputWidth: 100,
                 outputHeight: 50
             )

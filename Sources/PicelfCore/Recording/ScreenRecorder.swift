@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import ScreenCaptureKit
 import os
@@ -7,26 +8,33 @@ private let log = Logger(subsystem: "com.picelf", category: "ScreenRecorder")
 @MainActor
 final class ScreenRecorder: NSObject {
     struct ResolvedRecordingGeometry: Equatable {
-        let sourceRect: CGRect?
-        let outputWidth: Int
-        let outputHeight: Int
-    }
+        let sourceRegion: DisplayRecordingRect?
+        let pixelSize: RecordingPixelSize
 
-    enum CaptureTarget {
-        case window(SCWindow, requestedSourceRect: CGRect?)
-        case display(SCDisplay, requestedSourceRect: CGRect?)
+        var sourceRect: CGRect? { sourceRegion?.rect }
+        var outputWidth: Int { pixelSize.width }
+        var outputHeight: Int { pixelSize.height }
 
-        var requestedSourceRect: CGRect? {
-            switch self {
-            case .window(_, let requestedSourceRect), .display(_, let requestedSourceRect):
-                return requestedSourceRect
-            }
+        init(sourceRect: CGRect?, outputWidth: Int, outputHeight: Int) {
+            sourceRegion = sourceRect.map { DisplayRecordingRect(rect: $0) }
+            pixelSize = RecordingPixelSize(width: outputWidth, height: outputHeight)
         }
     }
+
+    typealias CaptureTarget = RecordingSelection
 
     let configuration: RecordingConfiguration
 
     private var stream: SCStream?
+    private let finalization = RecordingFinalization()
+    private var displayObservation: NSObjectProtocol?
+    private var displayCheckTask: Task<Void, Never>?
+    private var automaticStopTask: Task<Void, Never>?
+    private var activeSelection: RecordingSelection?
+    private var hasStarted = false
+    private var pendingStopReason: RecordingStopReason?
+    private let displayContextProvider: @MainActor (CGDirectDisplayID) async throws -> RecordingDisplayContext
+
     // nonisolated(unsafe) because these are set once on MainActor in startRecording(),
     // then read from the sampleQueue in SCStreamOutput. The gate lock ensures ordering.
     nonisolated(unsafe) private var writer: AVAssetWriter!
@@ -69,7 +77,7 @@ final class ScreenRecorder: NSObject {
 
     // MARK: - Callbacks
 
-    var onUnexpectedStop: ((_ videoURL: URL, _ elapsed: TimeInterval, _ error: Error) -> Void)?
+    var onAutomaticStop: ((Result<RecordingResult, Error>, RecordingStopReason) -> Void)?
 
     // MARK: - Init
 
@@ -77,19 +85,20 @@ final class ScreenRecorder: NSObject {
         configuration: RecordingConfiguration,
         microphoneAuthorizationStatusProvider: @escaping () -> AVAuthorizationStatus = {
             AVCaptureDevice.authorizationStatus(for: .audio)
-        }
+        },
+        displayContextProvider: @escaping @MainActor (CGDirectDisplayID) async throws -> RecordingDisplayContext = RecordingDisplayContext.resolve
     ) {
         self.configuration = configuration
         self.microphoneAuthorizationStatusProvider = microphoneAuthorizationStatusProvider
+        self.displayContextProvider = displayContextProvider
         super.init()
     }
 
-    #if DEBUG
     deinit {
         elapsedTimer?.invalidate()
-        log.debug("ScreenRecorder deinit")
+        if let displayObservation { NotificationCenter.default.removeObserver(displayObservation) }
+        displayCheckTask?.cancel()
     }
-    #endif
 
     // MARK: - Sample action
 
@@ -103,39 +112,31 @@ final class ScreenRecorder: NSObject {
     // MARK: - Start
 
     func startRecording(target: CaptureTarget) async throws {
-        let filter: SCContentFilter
-        let fallbackContentRect: CGRect
-        switch target {
-        case .window(let window, _):
-            filter = SCContentFilter(desktopIndependentWindow: window)
-            fallbackContentRect = window.frame
-        case .display(let display, _):
-            let excludedApplications = await Self.currentApplicationsForDisplayCaptureExclusion()
-            filter = SCContentFilter(display: display, excludingApplications: excludedApplications, exceptingWindows: [])
-            fallbackContentRect = display.frame
-        }
+        let context = try await displayContextProvider(target.display.displayID)
+        try target.validate(current: context.snapshot)
+        let filter = context.filter
+        let contentRect = context.snapshot.cgFrame
+        let scaleFactor = context.snapshot.pointPixelScale
 
-        let filterContentRect = filter.contentRect
-        let contentRect = Self.resolveContentRect(
-            preferred: filterContentRect,
-            fallback: fallbackContentRect,
-            requestedSourceRect: target.requestedSourceRect
-        )
-        let filterScale = CGFloat(filter.pointPixelScale)
-        let scaleFactor = filterScale > 0 ? filterScale : CGFloat(max(1, configuration.scaleFactor))
-
-        guard let resolved = Self.resolveGeometry(
-            contentRect: contentRect,
-            requestedSourceRect: target.requestedSourceRect,
-            scaleFactor: scaleFactor,
-            resolution: configuration.resolution
-        ) else {
-            throw RecordingError.writerCreationFailed("Invalid recording geometry")
+        guard let resolved = Self.resolveGeometry(selection: target, resolution: configuration.resolution) else {
+            throw RecordingError.invalidCaptureRegion
         }
+        activeSelection = target
         activeGeometry = resolved
         let ext = configuration.format.fileExtension
         tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("picelf-rec-\(UUID().uuidString.prefix(8)).\(ext)")
+
+        var startupSucceeded = false
+        defer {
+            if !startupSucceeded {
+                stopMicrophoneCapture()
+                if writer?.status == .writing { writer.cancelWriting() }
+                try? FileManager.default.removeItem(at: tempURL)
+                activeSelection = nil
+                activeGeometry = nil
+            }
+        }
 
         // AVAssetWriter
         writer = try AVAssetWriter(outputURL: tempURL, fileType: configuration.format.avFileType)
@@ -146,8 +147,12 @@ final class ScreenRecorder: NSObject {
             AVVideoWidthKey: resolved.outputWidth,
             AVVideoHeightKey: resolved.outputHeight
         ]
+        guard writer.canApply(outputSettings: videoSettings, forMediaType: .video) else {
+            throw RecordingError.unsupportedVideoSize
+        }
         videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
         videoInput.expectsMediaDataInRealTime = true
+        guard writer.canAdd(videoInput) else { throw RecordingError.unsupportedVideoSize }
         writer.add(videoInput)
 
         // System audio input
@@ -182,7 +187,10 @@ final class ScreenRecorder: NSObject {
             log.info("Microphone enabled: \(micID)")
         }
 
-        writer.startWriting()
+        guard writer.startWriting() else {
+            stopMicrophoneCapture()
+            throw RecordingError.unsupportedVideoSize
+        }
 
         // SCStream configuration
         let streamConfig = SCStreamConfiguration()
@@ -209,22 +217,38 @@ final class ScreenRecorder: NSObject {
 
         gate.withLock { $0.isRecording = true }
 
-        try await stream.startCapture()
-        let targetDescription: String
-        switch target {
-        case .window(let window, _):
-            targetDescription = "window:\(window.windowID)"
-        case .display(let display, _):
-            targetDescription = "display:\(display.displayID)"
+        do {
+            try await stream.startCapture()
+            // Catch changes that occurred during stream startup, before registering the observer.
+            let current = try await displayContextProvider(target.display.displayID)
+            try target.validate(current: current.snapshot)
+        } catch {
+            gate.withLock { $0.isRecording = false }
+            try? await stream.stopCapture()
+            await drainSampleQueue()
+            stopMicrophoneCapture()
+            await drainSampleQueue()
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: tempURL)
+            self.stream = nil
+            activeSelection = nil
+            throw error
         }
+        let targetDescription = "display:\(target.display.displayID)"
         let sourceRectDescription = resolved.sourceRect?.debugDescription ?? "full"
-        let requestedSourceRectDescription = target.requestedSourceRect?.debugDescription ?? "full"
+        let requestedSourceRectDescription = target.desktopRegion.rect.debugDescription
         log.info(
             "Recording geometry target=\(targetDescription, privacy: .public) contentRect=\(contentRect.debugDescription, privacy: .public) requestedSourceRect=\(requestedSourceRectDescription, privacy: .public) resolvedSourceRect=\(sourceRectDescription, privacy: .public) scale=\(scaleFactor, privacy: .public) size=\(resolved.outputWidth)x\(resolved.outputHeight)"
         )
         log.info(
             "Recording started target=\(targetDescription, privacy: .public) size=\(resolved.outputWidth)x\(resolved.outputHeight) sourceRect=\(sourceRectDescription, privacy: .public) @ \(self.configuration.frameRate)fps"
         )
+
+        startupSucceeded = true
+        hasStarted = true
+        observeDisplayChanges()
+        checkDisplayConfiguration()
+        if let pendingStopReason { requestAutomaticStop(reason: pendingStopReason) }
 
         // Start elapsed timer
         startDate = Date()
@@ -239,6 +263,7 @@ final class ScreenRecorder: NSObject {
     // MARK: - Pause / Resume
 
     func pauseRecording() {
+        guard hasStarted, gate.withLock({ $0.isRecording && !$0.isPaused }) else { return }
         gate.withLock { state in
             state.isPaused = true
             state.pauseStartPTS = state.lastReceivedPTS
@@ -249,6 +274,7 @@ final class ScreenRecorder: NSObject {
     }
 
     func resumeRecording() {
+        guard hasStarted, gate.withLock({ $0.isRecording && $0.isPaused }) else { return }
         gate.withLock { state in
             state.isPaused = false
             state.pendingResume = true
@@ -267,7 +293,16 @@ final class ScreenRecorder: NSObject {
 
     // MARK: - Stop
 
-    func stopRecording() async throws -> (url: URL, duration: TimeInterval) {
+    func stopRecording() async throws -> RecordingResult {
+        try await finalization.finish { [self] in
+            try await finalizeRecording()
+        }
+    }
+
+    private func finalizeRecording() async throws -> RecordingResult {
+        stopObservingDisplayChanges()
+        hasStarted = false
+        updateElapsed()
         elapsedTimer?.invalidate()
         elapsedTimer = nil
 
@@ -311,7 +346,10 @@ final class ScreenRecorder: NSObject {
             throw RecordingError.noFramesCaptured
         }
 
-        // 5. Finalize.
+        // 5. Finalize only a writing asset; AVFoundation rejects finishing a failed writer.
+        guard writer.status == .writing else {
+            throw RecordingError.finalizationFailed(Self.finalizationFailureReason(writer: writer, appendFailureReason: snapshot.appendFailureReason))
+        }
         videoInput.markAsFinished()
         audioInput?.markAsFinished()
         micInput?.markAsFinished()
@@ -329,48 +367,73 @@ final class ScreenRecorder: NSObject {
         let finalElapsed = elapsedSeconds
         log.info("Recording stopped: \(String(format: "%.1f", finalElapsed))s → \(self.tempURL.lastPathComponent)")
         activeGeometry = nil
-        return (tempURL, finalElapsed)
+        activeSelection = nil
+        return RecordingResult(url: tempURL, duration: finalElapsed)
     }
 
     // MARK: - Private
 
     private func updateElapsed() {
         guard let start = startDate else { return }
-        elapsedSeconds = Date().timeIntervalSince(start) - totalWallPauseDuration
+        elapsedSeconds = (pauseStartDate ?? Date()).timeIntervalSince(start) - totalWallPauseDuration
     }
 
-    nonisolated private static func resolveContentRect(
-        preferred: CGRect,
-        fallback: CGRect,
-        requestedSourceRect: CGRect?
-    ) -> CGRect {
-        let preferredIsValid = preferred.width > 0 && preferred.height > 0
-        let fallbackIsValid = fallback.width > 0 && fallback.height > 0
-
-        guard preferredIsValid else { return fallback }
-        guard fallbackIsValid else { return preferred }
-        guard let requestedSourceRect else { return preferred }
-
-        let preferredOverlap = intersectionArea(preferred, requestedSourceRect)
-        let fallbackOverlap = intersectionArea(fallback, requestedSourceRect)
-        return fallbackOverlap > preferredOverlap ? fallback : preferred
-    }
-
-    private static func currentApplicationsForDisplayCaptureExclusion() async -> [SCRunningApplication] {
-        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return [] }
-        do {
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            return content.applications.filter { $0.bundleIdentifier == bundleIdentifier }
-        } catch {
-            log.warning("Unable to resolve Picelf application for display capture exclusion: \(error.localizedDescription)")
-            return []
+    private func observeDisplayChanges() {
+        displayObservation = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.checkDisplayConfiguration() }
         }
     }
 
-    nonisolated private static func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
-        let intersection = lhs.intersection(rhs)
-        guard !intersection.isNull, !intersection.isEmpty else { return 0 }
-        return max(0, intersection.width) * max(0, intersection.height)
+    private func stopObservingDisplayChanges() {
+        if let displayObservation { NotificationCenter.default.removeObserver(displayObservation) }
+        displayObservation = nil
+        displayCheckTask?.cancel()
+        displayCheckTask = nil
+    }
+
+    private func checkDisplayConfiguration() {
+        guard hasStarted, let selection = activeSelection else { return }
+        displayCheckTask?.cancel()
+        displayCheckTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let context = try await displayContextProvider(selection.display.displayID)
+                guard !Task.isCancelled, hasStarted else { return }
+                try selection.validate(current: context.snapshot)
+            } catch {
+                guard !Task.isCancelled, hasStarted else { return }
+                log.notice("Recording display configuration changed: \(error.localizedDescription)")
+                requestAutomaticStop(reason: .displayChanged)
+            }
+        }
+    }
+
+    private func requestAutomaticStop(reason: RecordingStopReason) {
+        // SCStream can report an error before startCapture has returned.
+        guard hasStarted else {
+            pendingStopReason = reason
+            return
+        }
+        guard automaticStopTask == nil else { return }
+        automaticStopTask = Task { [self] in
+            let result: Result<RecordingResult, Error>
+            do { result = .success(try await stopRecording()) }
+            catch { result = .failure(error) }
+            onAutomaticStop?(result, reason)
+        }
+    }
+
+    nonisolated static func resolveGeometry(selection: RecordingSelection, resolution: RecordingResolution) -> ResolvedRecordingGeometry? {
+        resolveGeometry(
+            contentRect: CGRect(origin: .zero, size: selection.display.cgFrame.size),
+            requestedSourceRect: selection.region.rect,
+            scaleFactor: selection.display.pointPixelScale,
+            resolution: resolution
+        )
     }
 
     nonisolated static func resolveGeometry(
@@ -379,14 +442,22 @@ final class ScreenRecorder: NSObject {
         scaleFactor: CGFloat,
         resolution: RecordingResolution
     ) -> ResolvedRecordingGeometry? {
-        guard contentRect.width > 0, contentRect.height > 0 else { return nil }
+        guard RecordingDisplaySnapshot.isValidRect(contentRect),
+              scaleFactor.isFinite, scaleFactor > 0 else { return nil }
 
-        let scale = max(1, scaleFactor)
-        let fullPixelWidth = max(2, Int(round(contentRect.width * scale)))
-        let fullPixelHeight = max(2, Int(round(contentRect.height * scale)))
+        let scale = scaleFactor
+        let scaledWidth = (contentRect.width * scale).rounded()
+        let scaledHeight = (contentRect.height * scale).rounded()
+        // Avoid integer conversion overflow and values outside the video API's dimension range.
+        guard scaledWidth.isFinite, scaledHeight.isFinite,
+              scaledWidth >= 2, scaledHeight >= 2,
+              scaledWidth < CGFloat(Int32.max), scaledHeight < CGFloat(Int32.max) else { return nil }
+        let fullPixelWidth = Int(scaledWidth)
+        let fullPixelHeight = Int(scaledHeight)
 
         let normalizedPixelRect: CGRect
         if let requestedSourceRect {
+            guard RecordingDisplaySnapshot.isValidRect(requestedSourceRect) else { return nil }
             let clampedSourceRect = requestedSourceRect.intersection(contentRect)
             guard !clampedSourceRect.isNull,
                   !clampedSourceRect.isEmpty,
@@ -431,8 +502,8 @@ final class ScreenRecorder: NSObject {
         }
 
         let sourceRect = CGRect(
-            x: contentRect.minX + normalizedPixelRect.minX / scale,
-            y: contentRect.minY + normalizedPixelRect.minY / scale,
+            x: normalizedPixelRect.minX / scale,
+            y: normalizedPixelRect.minY / scale,
             width: normalizedPixelRect.width / scale,
             height: normalizedPixelRect.height / scale
         )
@@ -456,7 +527,7 @@ final class ScreenRecorder: NSObject {
         imageWidth: Int,
         imageHeight: Int
     ) -> CGRect? {
-        let scale = max(1, scaleFactor)
+        let scale = scaleFactor
         let scaledXMin = Int(floor(localRect.minX * scale))
         let scaledYMin = Int(floor(localRect.minY * scale))
         let scaledXMax = Int(ceil(localRect.maxX * scale))
@@ -671,6 +742,9 @@ final class ScreenRecorder: NSObject {
         }
         if shouldLog {
             log.error("\(detail, privacy: .public)")
+            Task { @MainActor in
+                self.requestAutomaticStop(reason: .streamError(RecordingError.finalizationFailed(detail)))
+            }
         }
     }
 
@@ -710,7 +784,7 @@ final class ScreenRecorder: NSObject {
 extension ScreenRecorder: SCStreamOutput {
     nonisolated func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard sampleBuffer.isValid else { return }
-        guard writer.status == .writing else { return }
+        guard gate.withLock({ $0.isRecording }), let writer, writer.status == .writing else { return }
         // Display recording can deliver idle frames with no pixel data — skip them.
         if type == .screen, sampleBuffer.imageBuffer == nil { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
@@ -770,7 +844,7 @@ extension ScreenRecorder: SCStreamOutput {
             appendSample(sampleBuffer, type: type, offset: offset)
         case .durationLimitReached:
             Task { @MainActor in
-                try? await self.stopRecording()
+                self.requestAutomaticStop(reason: .durationLimit)
             }
         }
     }
@@ -782,23 +856,8 @@ extension ScreenRecorder: SCStreamDelegate {
     nonisolated func stream(_ stream: SCStream, didStopWithError error: Error) {
         log.error("SCStream stopped unexpectedly: \(error.localizedDescription)")
         gate.withLock { state in state.isRecording = false }
-        // Stop microphone capture on error
         Task { @MainActor in
-            self.stopMicrophoneCapture()
-        }
-        // These are nonisolated(unsafe) — safe to access from sampleQueue after gate lock
-        videoInput.markAsFinished()
-        audioInput?.markAsFinished()
-        micInput?.markAsFinished()
-        let writerRef = writer!
-        let urlRef = tempURL!
-        Task {
-            await writerRef.finishWriting()
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                self.elapsedTimer?.invalidate()
-                self.onUnexpectedStop?(urlRef, self.elapsedSeconds, error)
-            }
+            self.requestAutomaticStop(reason: .streamError(error))
         }
     }
 }
@@ -808,7 +867,7 @@ extension ScreenRecorder: SCStreamDelegate {
 extension ScreenRecorder: AVCaptureAudioDataOutputSampleBufferDelegate {
     nonisolated func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard sampleBuffer.isValid else { return }
-        guard writer.status == .writing else { return }
+        guard gate.withLock({ $0.isRecording }), let writer, writer.status == .writing else { return }
         guard let micInput, micInput.isReadyForMoreMediaData else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
 
